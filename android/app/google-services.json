@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "892745304453",
+    "project_id": "ueh-student-bd621",
+    "storage_bucket": "ueh-student-bd621.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:892745304453:android:c13fdfb63472e3bc98dcec",
+        "android_client_info": {
+          "package_name": "com.example.app_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAh1MVa9FeZjh_EcVZ2-ryg-DwqkAbj59I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
