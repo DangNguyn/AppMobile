@@ -365,6 +365,89 @@ void main() {
       ),
     );
     expect(supportIcon.size, 21);
+
+    await tester.tap(find.text('Địa điểm'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Đà Nẵng').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tìm kiếm'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(hotel_booking.HotelSearchResultsPage), findsOneWidget);
+    expect(find.text('Khách sạn 1'), findsOneWidget);
+    expect(find.text('Đà Nẵng'), findsWidgets);
+
+    await tester.tap(find.text('Khách sạn 1'));
+    await tester.pumpAndSettle();
+    expect(find.byType(hotel_booking.HotelDetailPage), findsOneWidget);
+    expect(find.text('Tổng quan'), findsWidgets);
+    await Scrollable.ensureVisible(
+      tester.element(find.text('Phòng Deluxe giường đôi').first),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Phòng Deluxe giường đôi').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(hotel_booking.RoomDetailPage), findsOneWidget);
+
+    await tester.tap(find.text('Chọn phòng'));
+    await tester.pumpAndSettle();
+    expect(find.byType(hotel_booking.RoomBookingPage), findsOneWidget);
+    expect(
+      tester.widget<AppBar>(find.byType(AppBar)).backgroundColor,
+      const Color(0xFF0E1F38),
+    );
+
+    final bookingScrollable = find
+        .descendant(of: find.byType(Form), matching: find.byType(Scrollable))
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Thông tin khách hàng'),
+      250,
+      scrollable: bookingScrollable,
+    );
+    for (final (index, value) in [
+      (0, 'Nguyễn Văn A'),
+      (1, '0901234567'),
+      (2, 'guest@example.com'),
+    ]) {
+      final field = find.byType(TextFormField).at(index);
+      await tester.ensureVisible(field);
+      await tester.enterText(field, value);
+    }
+    final continueButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Tiếp tục'),
+    );
+    expect(
+      continueButton.style?.backgroundColor?.resolve({}),
+      const Color(0xFF0E1F38),
+    );
+    await tester.tap(find.text('Tiếp tục'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chọn phương thức thanh toán'), findsWidgets);
+    final totalCard = tester.widget<Container>(
+      find.byKey(const ValueKey('booking_total_card')),
+    );
+    expect(
+      (totalCard.decoration! as BoxDecoration).color,
+      const Color(0xFF0E1F38),
+    );
+    await tester.tap(find.text('VietQR'));
+    await tester.pumpAndSettle();
+    final paymentButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Thanh toán 2.500.000 ₫'),
+    );
+    expect(
+      paymentButton.style?.backgroundColor?.resolve({}),
+      const Color(0xFF0E1F38),
+    );
+    await tester.tap(find.byType(FilledButton).last);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Đã ghi nhận phương thức thanh toán. Đây là bản xem trước.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Booking page provides database-ready coupon and hotel widgets', (

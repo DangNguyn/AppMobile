@@ -421,7 +421,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                   ),
                 ),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF1674C5),
+                  backgroundColor: const Color(0xFF0E1F38),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 18,

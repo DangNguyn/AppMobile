@@ -111,7 +111,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                 leading: const Icon(Icons.local_offer_outlined),
                 title: const Text('Không sử dụng mã'),
                 trailing: _selectedCoupon == null
-                    ? const Icon(Icons.check_circle, color: Color(0xFF1674C5))
+                    ? const Icon(Icons.check_circle, color: Color(0xFF0E1F38))
                     : null,
                 onTap: () => Navigator.pop(context, 'none'),
               ),
@@ -120,12 +120,12 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(
                     Icons.confirmation_number_outlined,
-                    color: Color(0xFF1674C5),
+                    color: Color(0xFF0E1F38),
                   ),
                   title: Text(coupon.title),
                   subtitle: Text('${coupon.description} · ${coupon.code}'),
                   trailing: _selectedCoupon?.code == coupon.code
-                      ? const Icon(Icons.check_circle, color: Color(0xFF1674C5))
+                      ? const Icon(Icons.check_circle, color: Color(0xFF0E1F38))
                       : null,
                   onTap: () => Navigator.pop(context, coupon.code),
                 ),
@@ -151,7 +151,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0874C9),
+        backgroundColor: const Color(0xFF0E1F38),
         foregroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
@@ -331,7 +331,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                           children: [
                             const Icon(
                               Icons.local_offer_outlined,
-                              color: Color(0xFF1674C5),
+                              color: Color(0xFF0E1F38),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -347,7 +347,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                             Text(
                               _selectedCoupon == null ? 'Chọn' : 'Đổi',
                               style: const TextStyle(
-                                color: Color(0xFF1674C5),
+                                color: Color(0xFF0E1F38),
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -433,7 +433,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                       );
                     },
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF1674C5),
+                backgroundColor: const Color(0xFF0E1F38),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -459,10 +459,11 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
       padding: const EdgeInsets.all(16),
       children: [
         Container(
+          key: const ValueKey('booking_total_card'),
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
           decoration: BoxDecoration(
-            color: const Color(0xFF0874C9),
+            color: const Color(0xFF0E1F38),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Column(
@@ -505,7 +506,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
           title: 'VietQR',
           subtitle: 'Quét mã bằng ứng dụng ngân hàng',
           icon: Icons.qr_code_2_rounded,
-          color: const Color(0xFF0874C9),
+          color: const Color(0xFF0E1F38),
         ),
         _paymentOption(
           id: 'wallet',
@@ -519,14 +520,14 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
           title: 'Ngân hàng di động',
           subtitle: 'Thanh toán qua ứng dụng ngân hàng',
           icon: Icons.phone_android_rounded,
-          color: const Color(0xFF1674C5),
+          color: const Color(0xFF0E1F38),
         ),
         _paymentOption(
           id: 'bank_transfer',
           title: 'Chuyển tiền qua VietinBank',
           subtitle: 'Chuyển khoản ngân hàng',
           icon: Icons.account_balance_outlined,
-          color: const Color(0xFF1674C5),
+          color: const Color(0xFF0E1F38),
         ),
         _paymentOption(
           id: 'card',
@@ -578,7 +579,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
-          color: selected ? const Color(0xFF1674C5) : const Color(0xFFE5E9ED),
+          color: selected ? const Color(0xFF0E1F38) : const Color(0xFFE5E9ED),
           width: selected ? 1.5 : 1,
         ),
       ),
@@ -596,7 +597,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: selected
-                        ? const Color(0xFF1674C5)
+                        ? const Color(0xFF0E1F38)
                         : const Color(0xFFBAC4CE),
                     width: selected ? 2 : 1.5,
                   ),
@@ -607,7 +608,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                           width: 11,
                           height: 11,
                           decoration: const BoxDecoration(
-                            color: Color(0xFF1674C5),
+                            color: Color(0xFF0E1F38),
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -672,14 +673,16 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         children: [
           Row(
             children: [
-              Icon(icon, color: const Color(0xFF1674C5), size: 20),
+              Icon(icon, color: const Color(0xFF0E1F38), size: 20),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Color(0xFF19232D),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF19232D),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -749,7 +752,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF1674C5), width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF0E1F38), width: 1.5),
       ),
     );
   }
@@ -793,7 +796,7 @@ class _RoomAmenityItem extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 17, color: const Color(0xFF1674C5)),
+          Icon(icon, size: 17, color: const Color(0xFF0E1F38)),
           const SizedBox(width: 7),
           Text(
             label,
@@ -853,7 +856,7 @@ class _RoomDetailTag extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: const Color(0xFF1674C5)),
+          Icon(icon, size: 16, color: const Color(0xFF0E1F38)),
           const SizedBox(width: 6),
           Text(
             label,
@@ -885,7 +888,7 @@ class _RoomDetailInfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: const Color(0xFF1674C5)),
+        Icon(icon, size: 20, color: const Color(0xFF0E1F38)),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -944,7 +947,7 @@ class _HotelSectionNavigationBar extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: index == selectedIndex
-                                ? const Color(0xFF1674C5)
+                                ? const Color(0xFF0E1F38)
                                 : const Color(0xFF70777E),
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
@@ -1007,7 +1010,7 @@ class _SearchOptionBox extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
-              Icon(icon, color: const Color(0xFF2A6EEB), size: 22),
+              Icon(icon, color: const Color(0xFF0E1F38), size: 22),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1068,7 +1071,7 @@ class _InlinePill extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: isSelected
-                ? const Color(0xFF2A6EEB)
+                ? const Color(0xFF0E1F38)
                 : const Color(0xFFF5F5F7),
             borderRadius: BorderRadius.circular(12),
           ),

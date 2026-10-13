@@ -81,6 +81,8 @@ class TravelHomePage extends StatefulWidget {
 
 class _TravelHomePageState extends State<TravelHomePage> {
   final ScrollController _scrollController = ScrollController();
+  final hotel_booking.HotelSearchSelection _hotelSearchSelection =
+      hotel_booking.HotelSearchSelection();
   final Set<String> _savedArticleTitles = {};
   bool _showScrollTopButton = false;
   int _selectedNavIndex = 0;
@@ -127,11 +129,23 @@ class _TravelHomePageState extends State<TravelHomePage> {
     );
   }
 
+  void _openHotelSearchResults(String location) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => hotel_booking.HotelSearchResultsPage(
+          location: location,
+          selection: _hotelSearchSelection,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _scrollController
       ..removeListener(_handleScroll)
       ..dispose();
+    _hotelSearchSelection.dispose();
     super.dispose();
   }
 
@@ -193,7 +207,10 @@ class _TravelHomePageState extends State<TravelHomePage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                const SearchPanel(),
+                                SearchPanel(
+                                  selection: _hotelSearchSelection,
+                                  onSearch: _openHotelSearchResults,
+                                ),
                                 const SizedBox(height: 18),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
@@ -1801,7 +1818,14 @@ class _SavedCollectionsCard extends StatelessWidget {
 }
 
 class SearchPanel extends StatefulWidget {
-  const SearchPanel({super.key});
+  const SearchPanel({
+    super.key,
+    required this.selection,
+    required this.onSearch,
+  });
+
+  final hotel_booking.HotelSearchSelection selection;
+  final ValueChanged<String> onSearch;
 
   @override
   State<SearchPanel> createState() => _SearchPanelState();
@@ -1822,13 +1846,31 @@ class _SearchPanelState extends State<SearchPanel> {
   ];
 
   String _selectedLocation = 'Địa điểm';
-  DateTimeRange _dateRange = DateTimeRange(
-    start: DateTime.now().add(const Duration(days: 1)),
-    end: DateTime.now().add(const Duration(days: 3)),
-  );
-  int _roomCount = 1;
-  int _adultCount = 2;
-  int _childCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.selection.addListener(_handleSelectionChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant SearchPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selection != widget.selection) {
+      oldWidget.selection.removeListener(_handleSelectionChanged);
+      widget.selection.addListener(_handleSelectionChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.selection.removeListener(_handleSelectionChanged);
+    super.dispose();
+  }
+
+  void _handleSelectionChanged() {
+    if (mounted) setState(() {});
+  }
 
   String _formatDate(DateTime date) {
     final weekday = <String>[
@@ -1912,7 +1954,7 @@ class _SearchPanelState extends State<SearchPanel> {
       context: context,
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      initialDateRange: _dateRange,
+      initialDateRange: widget.selection.dateRange,
       helpText: 'Chọn ngày nhận phòng',
       saveText: 'Xác nhận',
       builder: (context, child) {
@@ -1929,7 +1971,7 @@ class _SearchPanelState extends State<SearchPanel> {
     );
 
     if (picked != null && mounted) {
-      setState(() => _dateRange = picked);
+      widget.selection.updateDateRange(picked);
     }
   }
 
@@ -1941,9 +1983,9 @@ class _SearchPanelState extends State<SearchPanel> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        int room = _roomCount;
-        int adult = _adultCount;
-        int child = _childCount;
+        int room = widget.selection.roomCount;
+        int adult = widget.selection.adultCount;
+        int child = widget.selection.childCount;
 
         return StatefulBuilder(
           builder: (context, setModalState) {
@@ -2021,17 +2063,30 @@ class _SearchPanelState extends State<SearchPanel> {
     );
 
     if (result != null && mounted) {
-      setState(() {
-        _roomCount = result['room'] ?? _roomCount;
-        _adultCount = result['adult'] ?? _adultCount;
-        _childCount = result['child'] ?? _childCount;
-      });
+      widget.selection.updateGuests(
+        rooms: result['room'] ?? widget.selection.roomCount,
+        adults: result['adult'] ?? widget.selection.adultCount,
+        children: result['child'] ?? widget.selection.childCount,
+      );
     }
+  }
+
+  void _searchHotels() {
+    if (_selectedLocation == 'Địa điểm') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng chọn điểm đến trước khi tìm kiếm'),
+        ),
+      );
+      return;
+    }
+    widget.onSearch(_selectedLocation);
   }
 
   @override
   Widget build(BuildContext context) {
-    final nights = _dateRange.duration.inDays;
+    final dateRange = widget.selection.dateRange;
+    final nights = dateRange.duration.inDays;
 
     return SizedBox(
       width: double.infinity,
@@ -2152,7 +2207,7 @@ class _SearchPanelState extends State<SearchPanel> {
                                         const SizedBox(width: 7),
                                         Expanded(
                                           child: Text(
-                                            '${_formatDate(_dateRange.start)} - ${_formatDate(_dateRange.end)}\n$nights đêm',
+                                            '${_formatDate(dateRange.start)} - ${_formatDate(dateRange.end)}\n$nights đêm',
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
@@ -2195,7 +2250,7 @@ class _SearchPanelState extends State<SearchPanel> {
                                         const SizedBox(width: 7),
                                         Expanded(
                                           child: Text(
-                                            '$_roomCount phòng · $_adultCount người lớn · $_childCount trẻ',
+                                            '${widget.selection.roomCount} phòng · ${widget.selection.adultCount} người lớn · ${widget.selection.childCount} trẻ',
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
@@ -2237,19 +2292,22 @@ class _SearchPanelState extends State<SearchPanel> {
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Container(
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF2A6EEB),
+                                child: Material(
+                                  color: const Color(0xFF2A6EEB),
+                                  borderRadius: BorderRadius.circular(11),
+                                  child: InkWell(
+                                    onTap: _searchHotels,
                                     borderRadius: BorderRadius.circular(11),
-                                  ),
-                                  child: const Center(
-                                    child: Text(
-                                      'Tìm kiếm',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
+                                    child: Container(
+                                      height: 36,
+                                      alignment: Alignment.center,
+                                      child: const Text(
+                                        'Tìm kiếm',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
                                       ),
                                     ),
                                   ),
