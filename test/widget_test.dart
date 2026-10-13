@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:app_mobile/booking_app.dart' as hotel_booking;
 import 'package:app_mobile/main.dart';
 
 void main() {
@@ -135,75 +136,75 @@ void main() {
   });
 
   testWidgets(
-      'Skipping onboarding details keeps contact but leaves profile blank', (
-    WidgetTester tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
+    'Skipping onboarding details keeps contact but leaves profile blank',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('welcome_continue_button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('skip_notifications_button')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('auth_email_field')),
-      'huy@example.com',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('auth_mobile_field')),
-      '+84901234567',
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('auth_continue_button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('additional_skip_button')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('welcome_continue_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('skip_notifications_button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('auth_email_field')),
+        'huy@example.com',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('auth_mobile_field')),
+        '+84901234567',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('auth_continue_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('additional_skip_button')));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Mã giảm số lượng có hạn'), findsOneWidget);
-    await tester.tap(find.text('Tài khoản').last);
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('saved_account_data_card')),
-      250,
-      scrollable: find
-          .descendant(
-            of: find.byType(CustomScrollView),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
-    await tester.tap(find.text('Thông tin đã lưu'));
-    await tester.pumpAndSettle();
-    expect(find.text('+84901234567'), findsOneWidget);
-    expect(find.text('Đã tắt'), findsOneWidget);
-    expect(find.text('Chưa cập nhật'), findsWidgets);
-  });
+      expect(find.text('Mã giảm số lượng có hạn'), findsOneWidget);
+      await tester.tap(find.text('Tài khoản').last);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('saved_account_data_card')),
+        250,
+        scrollable: find
+            .descendant(
+              of: find.byType(CustomScrollView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(find.text('Thông tin đã lưu'));
+      await tester.pumpAndSettle();
+      expect(find.text('+84901234567'), findsOneWidget);
+      expect(find.text('Đã tắt'), findsOneWidget);
+      expect(find.text('Chưa cập nhật'), findsWidgets);
+    },
+  );
 
   testWidgets(
-      'Auth close button sits below status bar and returns to notifications', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    SharedPreferences.setMockInitialValues({});
+    'Auth close button sits below status bar and returns to notifications',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('welcome_continue_button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('skip_notifications_button')));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('welcome_continue_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('skip_notifications_button')));
+      await tester.pumpAndSettle();
 
-    final closeButton = find.byKey(const ValueKey('auth_close_button'));
-    expect(tester.getTopLeft(closeButton).dy, greaterThanOrEqualTo(12));
-    expect(tester.getSize(closeButton), const Size(48, 48));
-    await tester.tap(closeButton);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Thông báo ứng dụng'), findsOneWidget);
-  });
+      final closeButton = find.byKey(const ValueKey('auth_close_button'));
+      expect(tester.getTopLeft(closeButton).dy, greaterThanOrEqualTo(12));
+      expect(tester.getSize(closeButton), const Size(48, 48));
+      await tester.tap(closeButton);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Thông báo ứng dụng'), findsOneWidget);
+    },
+  );
 
   testWidgets('Logout clears saved customer data and restarts onboarding', (
     WidgetTester tester,
@@ -309,9 +310,7 @@ void main() {
     );
     expect(
       tester
-          .getSize(
-            find.byKey(const ValueKey('home_search_blue_background')),
-          )
+          .getSize(find.byKey(const ValueKey('home_search_blue_background')))
           .width,
       tester.getSize(find.byType(SearchPanel)).width,
     );
@@ -321,12 +320,16 @@ void main() {
     );
     final blueBackgroundBottom = tester
         .getBottomLeft(
-            find.byKey(const ValueKey('home_search_blue_background')))
+          find.byKey(const ValueKey('home_search_blue_background')),
+        )
         .dy;
-    final searchFormBottom =
-        tester.getBottomLeft(find.byKey(const ValueKey('home_search_form'))).dy;
+    final searchFormBottom = tester
+        .getBottomLeft(find.byKey(const ValueKey('home_search_form')))
+        .dy;
     expect(
-        (blueBackgroundBottom - searchFormBottom).abs(), lessThanOrEqualTo(2));
+      (blueBackgroundBottom - searchFormBottom).abs(),
+      lessThanOrEqualTo(2),
+    );
     expect(
       tester.getBottomLeft(find.byType(PromoStrip)).dy,
       greaterThan(blueBackgroundBottom),
@@ -362,6 +365,89 @@ void main() {
       ),
     );
     expect(supportIcon.size, 21);
+
+    await tester.tap(find.text('Địa điểm'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Đà Nẵng').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tìm kiếm'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(hotel_booking.HotelSearchResultsPage), findsOneWidget);
+    expect(find.text('Khách sạn 1'), findsOneWidget);
+    expect(find.text('Đà Nẵng'), findsWidgets);
+
+    await tester.tap(find.text('Khách sạn 1'));
+    await tester.pumpAndSettle();
+    expect(find.byType(hotel_booking.HotelDetailPage), findsOneWidget);
+    expect(find.text('Tổng quan'), findsWidgets);
+    await Scrollable.ensureVisible(
+      tester.element(find.text('Phòng Deluxe giường đôi').first),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Phòng Deluxe giường đôi').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(hotel_booking.RoomDetailPage), findsOneWidget);
+
+    await tester.tap(find.text('Chọn phòng'));
+    await tester.pumpAndSettle();
+    expect(find.byType(hotel_booking.RoomBookingPage), findsOneWidget);
+    expect(
+      tester.widget<AppBar>(find.byType(AppBar)).backgroundColor,
+      const Color(0xFF0E1F38),
+    );
+
+    final bookingScrollable = find
+        .descendant(of: find.byType(Form), matching: find.byType(Scrollable))
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Thông tin khách hàng'),
+      250,
+      scrollable: bookingScrollable,
+    );
+    for (final (index, value) in [
+      (0, 'Nguyễn Văn A'),
+      (1, '0901234567'),
+      (2, 'guest@example.com'),
+    ]) {
+      final field = find.byType(TextFormField).at(index);
+      await tester.ensureVisible(field);
+      await tester.enterText(field, value);
+    }
+    final continueButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Tiếp tục'),
+    );
+    expect(
+      continueButton.style?.backgroundColor?.resolve({}),
+      const Color(0xFF0E1F38),
+    );
+    await tester.tap(find.text('Tiếp tục'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chọn phương thức thanh toán'), findsWidgets);
+    final totalCard = tester.widget<Container>(
+      find.byKey(const ValueKey('booking_total_card')),
+    );
+    expect(
+      (totalCard.decoration! as BoxDecoration).color,
+      const Color(0xFF0E1F38),
+    );
+    await tester.tap(find.text('VietQR'));
+    await tester.pumpAndSettle();
+    final paymentButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Thanh toán 2.500.000 ₫'),
+    );
+    expect(
+      paymentButton.style?.backgroundColor?.resolve({}),
+      const Color(0xFF0E1F38),
+    );
+    await tester.tap(find.byType(FilledButton).last);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Đã ghi nhận phương thức thanh toán. Đây là bản xem trước.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Booking page provides database-ready coupon and hotel widgets', (
@@ -425,6 +511,19 @@ void main() {
     expect(find.text('Hoàn tiền'), findsOneWidget);
   });
 
+  testWidgets('Booking page opens the hotel booking workflow', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Đặt chỗ của tôi'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tìm và đặt phòng khách sạn'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(hotel_booking.TravelHomePage), findsOneWidget);
+  });
+
   testWidgets('Home, booking and saved typography follows Explore sizing', (
     WidgetTester tester,
   ) async {
@@ -436,9 +535,7 @@ void main() {
     );
     expect(homeSectionTitle.style?.fontSize, 17);
 
-    final homePromo = tester.widget<RichText>(
-      find.byType(RichText).first,
-    );
+    final homePromo = tester.widget<RichText>(find.byType(RichText).first);
     expect((homePromo.text as TextSpan).style?.fontSize, 19);
 
     await tester.tap(find.text('Đặt chỗ của tôi'));
@@ -538,7 +635,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-        find.text('Gửi góp ý hoặc liên hệ với đội ngũ FomoGo'), findsOneWidget);
+      find.text('Gửi góp ý hoặc liên hệ với đội ngũ FomoGo'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Profile pencil opens editable fields and saves profile data', (
@@ -554,10 +653,14 @@ void main() {
 
     expect(find.text('Thông tin tài khoản'), findsOneWidget);
     expect(
-        find.byKey(const ValueKey('profile_username_field')), findsOneWidget);
+      find.byKey(const ValueKey('profile_username_field')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('profile_bio_field')), findsOneWidget);
     expect(
-        find.byKey(const ValueKey('profile_birth_date_field')), findsOneWidget);
+      find.byKey(const ValueKey('profile_birth_date_field')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('profile_gender_field')), findsOneWidget);
     expect(find.byKey(const ValueKey('profile_city_field')), findsOneWidget);
 
@@ -604,137 +707,145 @@ void main() {
   });
 
   testWidgets(
-      'Account payment item opens card management and adds a masked card', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Tài khoản').last);
-    await tester.pumpAndSettle();
+    'Account payment item opens card management and adds a masked card',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tài khoản').last);
+      await tester.pumpAndSettle();
 
-    final accountScrollable = find
-        .descendant(
-          of: find.byType(CustomScrollView),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    await tester.scrollUntilVisible(
-      find.text('Thanh toán'),
-      300,
-      scrollable: accountScrollable,
-    );
-    await tester.tap(find.text('Thanh toán'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Thẻ của tôi'), findsOneWidget);
-    expect(
-      find.text('Tận hưởng thanh toán liền mạch với thẻ đã lưu'),
-      findsOneWidget,
-    );
-    expect(
-        find.byKey(const ValueKey('add_payment_card_button')), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('add_payment_card_button')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('payment_card_holder_field')),
-      'Huy Nguyen',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('payment_card_number_field')),
-      '4242424242424242',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('payment_card_expiry_field')),
-      '12/30',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('payment_card_cvv_field')),
-      '123',
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('confirm_add_payment_card_button')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Phương thức thanh toán'), findsOneWidget);
-    expect(find.text('Visa •••• 4242'), findsOneWidget);
-    expect(find.text('Huy Nguyen · Hết hạn 12/30'), findsOneWidget);
-    expect(find.text('4242424242424242'), findsNothing);
-    expect(find.text('123'), findsNothing);
-  });
-
-  testWidgets('Account refund item opens refund balance and bank account flow',
-      (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Tài khoản').last);
-    await tester.pumpAndSettle();
-
-    final accountScrollable = find
-        .descendant(
-          of: find.byType(CustomScrollView),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    final refundTile = find.ancestor(
-      of: find.text('Hoàn tiền'),
-      matching: find.byType(ListTile),
-    );
-    await tester.scrollUntilVisible(
-      refundTile,
-      300,
-      scrollable: accountScrollable,
-    );
-    await tester.ensureVisible(refundTile);
-    await tester.pumpAndSettle();
-    await tester.tap(refundTile);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Số dư hoàn tiền & trạng thái hoàn tiền'), findsOneWidget);
-    expect(find.text('0 VND'), findsOneWidget);
-    expect(
-        find.text(
-            'Đôi khi, khoản hoàn tiền sẽ được chuyển thành Số dư Hoàn tiền để dùng cho các đặt chỗ sau.'),
-        findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey('withdraw_refund_button')),
+      final accountScrollable = find
+          .descendant(
+            of: find.byType(CustomScrollView),
+            matching: find.byType(Scrollable),
           )
-          .onPressed,
-      isNull,
-    );
+          .first;
+      await tester.scrollUntilVisible(
+        find.text('Thanh toán'),
+        300,
+        scrollable: accountScrollable,
+      );
+      await tester.tap(find.text('Thanh toán'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('refund_history_button')));
-    await tester.pumpAndSettle();
-    expect(find.text('Lịch sử hoàn tiền'), findsOneWidget);
-    expect(find.text('Chưa có giao dịch hoàn tiền'), findsOneWidget);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
+      expect(find.text('Thẻ của tôi'), findsOneWidget);
+      expect(
+        find.text('Tận hưởng thanh toán liền mạch với thẻ đã lưu'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('add_payment_card_button')),
+        findsOneWidget,
+      );
 
-    await tester
-        .tap(find.byKey(const ValueKey('add_refund_bank_account_button')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('refund_bank_account_holder_field')),
-      'HUY NGUYEN',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('refund_bank_account_number_field')),
-      '1234567890',
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('save_refund_bank_account_button')),
-    );
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('add_payment_card_button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('payment_card_holder_field')),
+        'Huy Nguyen',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('payment_card_number_field')),
+        '4242424242424242',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('payment_card_expiry_field')),
+        '12/30',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('payment_card_cvv_field')),
+        '123',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('confirm_add_payment_card_button')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Vietcombank'), findsOneWidget);
-    expect(find.text('HUY NGUYEN · •••• 7890'), findsOneWidget);
-    expect(find.text('1234567890'), findsNothing);
-  });
+      expect(find.text('Phương thức thanh toán'), findsOneWidget);
+      expect(find.text('Visa •••• 4242'), findsOneWidget);
+      expect(find.text('Huy Nguyen · Hết hạn 12/30'), findsOneWidget);
+      expect(find.text('4242424242424242'), findsNothing);
+      expect(find.text('123'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Account refund item opens refund balance and bank account flow',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tài khoản').last);
+      await tester.pumpAndSettle();
+
+      final accountScrollable = find
+          .descendant(
+            of: find.byType(CustomScrollView),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      final refundTile = find.ancestor(
+        of: find.text('Hoàn tiền'),
+        matching: find.byType(ListTile),
+      );
+      await tester.scrollUntilVisible(
+        refundTile,
+        300,
+        scrollable: accountScrollable,
+      );
+      await tester.ensureVisible(refundTile);
+      await tester.pumpAndSettle();
+      await tester.tap(refundTile);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Số dư hoàn tiền & trạng thái hoàn tiền'),
+        findsOneWidget,
+      );
+      expect(find.text('0 VND'), findsOneWidget);
+      expect(
+        find.text(
+          'Đôi khi, khoản hoàn tiền sẽ được chuyển thành Số dư Hoàn tiền để dùng cho các đặt chỗ sau.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('withdraw_refund_button')),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('refund_history_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Lịch sử hoàn tiền'), findsOneWidget);
+      expect(find.text('Chưa có giao dịch hoàn tiền'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('add_refund_bank_account_button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('refund_bank_account_holder_field')),
+        'HUY NGUYEN',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('refund_bank_account_number_field')),
+        '1234567890',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('save_refund_bank_account_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Vietcombank'), findsOneWidget);
+      expect(find.text('HUY NGUYEN · •••• 7890'), findsOneWidget);
+      expect(find.text('1234567890'), findsNothing);
+    },
+  );
 
   testWidgets('Account settings opens settings screen and controls', (
     WidgetTester tester,
@@ -811,9 +922,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester
-          .widget<Switch>(
-            find.byKey(const ValueKey('trusted_device_switch')),
-          )
+          .widget<Switch>(find.byKey(const ValueKey('trusted_device_switch')))
           .value,
       isTrue,
     );
@@ -827,10 +936,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('confirm_account_deletion')));
     await tester.pumpAndSettle();
-    expect(
-      find.textContaining('Chưa có dữ liệu nào bị xóa'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Chưa có dữ liệu nào bị xóa'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -907,10 +1013,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Hồ sơ riêng tư'), findsOneWidget);
-    expect(
-      find.text('Đặt tab Bộ sưu tập thành Riêng tư'),
-      findsOneWidget,
-    );
+    expect(find.text('Đặt tab Bộ sưu tập thành Riêng tư'), findsOneWidget);
     expect(find.text('Đặt tab Đánh giá thành Riêng tư'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('private_profile_toggle')));
     await tester.pumpAndSettle();
@@ -924,17 +1027,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester
-          .widget<Switch>(
-            find.byKey(const ValueKey('private_profile_toggle')),
-          )
+          .widget<Switch>(find.byKey(const ValueKey('private_profile_toggle')))
           .value,
       isTrue,
     );
     expect(
       tester
-          .widget<Switch>(
-            find.byKey(const ValueKey('private_reviews_toggle')),
-          )
+          .widget<Switch>(find.byKey(const ValueKey('private_reviews_toggle')))
           .value,
       isTrue,
     );
@@ -973,9 +1072,7 @@ void main() {
       expect(find.text(destination.value), findsOneWidget);
     }
 
-    await tester.tap(
-      find.text('Cố đô Huế: Dấu xưa bên dòng sông Hương'),
-    );
+    await tester.tap(find.text('Cố đô Huế: Dấu xưa bên dòng sông Hương'));
     await tester.pumpAndSettle();
 
     final detailScrollable = find
