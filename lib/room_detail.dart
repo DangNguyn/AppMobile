@@ -2,12 +2,16 @@ part of 'booking_app.dart';
 
 class RoomDetailPage extends StatefulWidget {
   final String hotelName;
+  final String? hotelId;
+  final RoomType? roomType;
   final HotelSearchSelection selection;
 
   const RoomDetailPage({
     super.key,
     required this.hotelName,
     required this.selection,
+    this.hotelId,
+    this.roomType,
   });
 
   @override
@@ -23,6 +27,25 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
 
   final PageController _imageController = PageController();
   int _selectedImageIndex = 0;
+  List<String> _apiImages = const [];
+  List<String> get _images => _apiImages.isEmpty ? _roomImages : _apiImages;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoomImages();
+  }
+
+  Future<void> _loadRoomImages() async {
+    final id = widget.roomType?.id;
+    if (id == null || id.isEmpty) return;
+    try {
+      final images = await apiRepository.roomTypeImages(id);
+      if (mounted && images.isNotEmpty) setState(() => _apiImages = images);
+    } on ApiException {
+      // Keep bundled fallback images when the optional endpoint fails.
+    }
+  }
 
   @override
   void dispose() {
@@ -67,12 +90,12 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                 children: [
                   PageView.builder(
                     controller: _imageController,
-                    itemCount: _roomImages.length,
+                    itemCount: _images.length,
                     onPageChanged: (index) {
                       setState(() => _selectedImageIndex = index);
                     },
                     itemBuilder: (context, index) => Image.network(
-                      _roomImages[index],
+                      _images[index],
                       fit: BoxFit.cover,
                       loadingBuilder: (context, child, progress) {
                         if (progress == null) return child;
@@ -87,15 +110,15 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                       },
                       errorBuilder: (context, error, stackTrace) =>
                           const ColoredBox(
-                            color: Color(0xFFE8EEF3),
-                            child: Center(
-                              child: Icon(
-                                Icons.bed_rounded,
-                                color: Color(0xFF7896AA),
-                                size: 76,
-                              ),
-                            ),
+                        color: Color(0xFFE8EEF3),
+                        child: Center(
+                          child: Icon(
+                            Icons.bed_rounded,
+                            color: Color(0xFF7896AA),
+                            size: 76,
                           ),
+                        ),
+                      ),
                     ),
                   ),
                   const Positioned(
@@ -135,7 +158,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                       child: _RoomImageNavigationButton(
                         tooltip: 'Ảnh tiếp theo',
                         icon: Icons.chevron_right_rounded,
-                        onPressed: _selectedImageIndex == _roomImages.length - 1
+                        onPressed: _selectedImageIndex == _images.length - 1
                             ? null
                             : () => _showImage(_selectedImageIndex + 1),
                       ),
@@ -146,7 +169,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                     bottom: 12,
                     child: Row(
                       children: [
-                        for (var index = 0; index < _roomImages.length; index++)
+                        for (var index = 0; index < _images.length; index++)
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
                             margin: const EdgeInsets.only(right: 5),
@@ -175,7 +198,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        '${_selectedImageIndex + 1}/${_roomImages.length}',
+                        '${_selectedImageIndex + 1}/${_images.length}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 12,
@@ -213,8 +236,8 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Phòng Deluxe giường đôi',
+                Text(
+                  widget.roomType?.name ?? 'Chi tiết phòng',
                   style: TextStyle(
                     color: Color(0xFF19232D),
                     fontSize: 22,
@@ -222,21 +245,23 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                const Wrap(
+                Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
                     _RoomDetailTag(
                       icon: Icons.people_alt_outlined,
-                      label: 'Tối đa 2 khách',
+                      label: 'Tối đa ${widget.roomType?.maxGuests ?? 0} khách',
                     ),
-                    _RoomDetailTag(
+                    const _RoomDetailTag(
                       icon: Icons.bed_outlined,
                       label: '1 giường đôi',
                     ),
                     _RoomDetailTag(
                       icon: Icons.square_foot_rounded,
-                      label: '32 m²',
+                      label: widget.roomType?.description.isNotEmpty == true
+                          ? widget.roomType!.description
+                          : 'Hạng phòng tiêu chuẩn',
                     ),
                   ],
                 ),
@@ -387,13 +412,13 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
           ),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Phòng Deluxe giường đôi',
+                      widget.roomType?.name ?? 'Chi tiết phòng',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -417,6 +442,8 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                     builder: (_) => RoomBookingPage(
                       hotelName: widget.hotelName,
                       selection: widget.selection,
+                      hotelId: widget.hotelId,
+                      roomType: widget.roomType,
                     ),
                   ),
                 ),

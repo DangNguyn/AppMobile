@@ -3,21 +3,73 @@ part of 'booking_app.dart';
 class HotelDetailPage extends StatefulWidget {
   final HotelSearchSelection selection;
   final String hotelName;
+  final String? hotelId;
 
   const HotelDetailPage({
     super.key,
     required this.selection,
     this.hotelName = 'Tên khách sạn',
+    this.hotelId,
   });
 
   @override
   State<HotelDetailPage> createState() => _HotelDetailPageState();
 }
 
+class _RoomTypePreviewImage extends StatelessWidget {
+  const _RoomTypePreviewImage({required this.request});
+
+  final Future<List<String>>? request;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<String>>(
+      future: request,
+      builder: (context, snapshot) {
+        final images = snapshot.data ?? const <String>[];
+        if (images.isNotEmpty) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              images.first,
+              width: 76,
+              height: 76,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _fallbackImage(),
+            ),
+          );
+        }
+        return _fallbackImage();
+      },
+    );
+  }
+
+  Widget _fallbackImage() {
+    return Container(
+      width: 76,
+      height: 76,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFDCEAF4), Color(0xFF9AB8CC)],
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Icon(Icons.bed_rounded, color: Colors.white, size: 38),
+    );
+  }
+}
+
 class _HotelDetailPageState extends State<HotelDetailPage> {
   bool _isSaved = false;
   bool _isSectionBarVisible = false;
   int _selectedSectionIndex = 0;
+  Hotel? _hotel;
+  List<RoomType> _roomTypes = const [];
+  List<String> _hotelImages = const [];
+  List<HotelAmenity> _amenities = const [];
+  final Map<String, Future<List<String>>> _roomImageRequests = {};
   final _overviewKey = GlobalKey();
   final _roomsKey = GlobalKey();
   final _locationKey = GlobalKey();
@@ -44,6 +96,34 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
   void initState() {
     super.initState();
     widget.selection.addListener(_handleSelectionChanged);
+    _loadDetails();
+  }
+
+  Future<void> _loadDetails() async {
+    final hotelId = widget.hotelId;
+    if (hotelId == null || hotelId.isEmpty) return;
+    try {
+      final results = await Future.wait<dynamic>([
+        apiRepository.hotel(hotelId),
+        apiRepository.roomTypes(hotelId),
+        apiRepository.hotelImages(hotelId),
+        apiRepository.hotelAmenities(hotelId),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _hotel = results[0] as Hotel;
+        _roomTypes = results[1] as List<RoomType>;
+        _hotelImages = results[2] as List<String>;
+        _amenities = results[3] as List<HotelAmenity>;
+        for (final roomType in _roomTypes) {
+          _roomImageRequests[roomType.id] = apiRepository.roomTypeImages(
+            roomType.id,
+          );
+        }
+      });
+    } on ApiException {
+      // The fallback content remains visible when optional detail calls fail.
+    }
   }
 
   @override
@@ -84,8 +164,8 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
     final activationY = MediaQuery.paddingOf(context).top + kToolbarHeight + 52;
     var visibleSectionIndex = 0;
     for (var index = 0; index < sectionKeys.length; index++) {
-      final renderObject = sectionKeys[index].currentContext
-          ?.findRenderObject();
+      final renderObject =
+          sectionKeys[index].currentContext?.findRenderObject();
       if (renderObject is RenderBox &&
           renderObject.localToGlobal(Offset.zero).dy <= activationY) {
         visibleSectionIndex = index;
@@ -164,8 +244,10 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             key: _overviewKey,
             title: 'Tổng quan',
             emphasize: true,
-            child: const Text(
-              'Khám phá không gian nghỉ dưỡng thoải mái với các tiện ích phù hợp cho chuyến đi của bạn.',
+            child: Text(
+              _hotel?.description.isNotEmpty == true
+                  ? _hotel!.description
+                  : 'Khám phá không gian nghỉ dưỡng thoải mái với các tiện ích phù hợp cho chuyến đi của bạn.',
               style: detailStyle,
             ),
           ),
@@ -179,7 +261,19 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             key: _locationKey,
             title: 'Vị trí',
             emphasize: true,
-            child: const _HotelNearbyPlacesMap(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _hotel?.address.isNotEmpty == true
+                      ? _hotel!.address
+                      : 'Địa chỉ đang được cập nhật.',
+                  style: detailStyle,
+                ),
+                const SizedBox(height: 12),
+                const _HotelNearbyPlacesMap(),
+              ],
+            ),
           ),
           _buildHotelSection(
             key: _policiesKey,
@@ -205,79 +299,94 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
   }
 
   Widget _buildRoomPreview() {
-    return Material(
-      color: const Color(0xFFF7F9FC),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => RoomDetailPage(
-              hotelName: widget.hotelName,
-              selection: widget.selection,
+    if (_roomTypes.isEmpty) {
+      return const Text(
+        'Chưa có thông tin hạng phòng cho khách sạn này.',
+        style: TextStyle(color: Color(0xFF6D747B)),
+      );
+    }
+    return Column(
+      children: [
+        for (final roomType in _roomTypes)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Material(
+              color: const Color(0xFFF7F9FC),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                onTap: () => _openRoomType(roomType),
+                borderRadius: BorderRadius.circular(14),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      _RoomTypePreviewImage(
+                        request: _roomImageRequests[roomType.id],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              roomType.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF19232D),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Tối đa ${roomType.maxGuests} khách · ${_formatPrice(roomType.basePrice)}',
+                              style: const TextStyle(
+                                color: Color(0xFF6D747B),
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Xem chi tiết phòng',
+                              style: TextStyle(
+                                color: Color(0xFF1674C5),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Color(0xFF7D858D),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFFDCEAF4), Color(0xFF9AB8CC)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.bed_rounded,
-                  color: Colors.white,
-                  size: 38,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Phòng Deluxe giường đôi',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Color(0xFF19232D),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      '2 khách · 1 giường đôi',
-                      style: TextStyle(color: Color(0xFF6D747B), fontSize: 13),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Xem chi tiết phòng',
-                      style: TextStyle(
-                        color: Color(0xFF1674C5),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: Color(0xFF7D858D)),
-            ],
-          ),
+      ],
+    );
+  }
+
+  void _openRoomType(RoomType roomType) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RoomDetailPage(
+          hotelName: _hotel?.name ?? widget.hotelName,
+          selection: widget.selection,
+          hotelId: widget.hotelId,
+          roomType: roomType,
         ),
       ),
     );
   }
+
+  String _formatPrice(double price) =>
+      price > 0 ? '${price.toStringAsFixed(0)} đ/đêm' : 'Giá liên hệ';
 
   @override
   void dispose() {
@@ -296,6 +405,14 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
       backgroundColor: Colors.transparent,
       builder: (context) {
         final sheetHeight = MediaQuery.sizeOf(context).height * 0.8;
+        final amenities = _amenities.isEmpty
+            ? _hotelAmenities
+            : _amenities
+                .map((amenity) => (
+                      Icons.check_circle_outline,
+                      amenity.name,
+                    ))
+                .toList();
         return SafeArea(
           top: false,
           child: Container(
@@ -335,16 +452,16 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                 const SizedBox(height: 16),
                 Expanded(
                   child: GridView.builder(
-                    itemCount: _hotelAmenities.length,
+                    itemCount: amenities.length,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 2.8,
-                        ),
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 2.8,
+                    ),
                     itemBuilder: (context, index) {
-                      final (icon, label) = _hotelAmenities[index];
+                      final (icon, label) = amenities[index];
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
@@ -395,7 +512,13 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  for (final (icon, label) in _hotelAmenities.take(4))
+                  for (final (icon, label) in (_amenities.isEmpty
+                          ? _hotelAmenities
+                          : _amenities.take(4).map((amenity) => (
+                                Icons.check_circle_outline,
+                                amenity.name,
+                              )))
+                      .take(4))
                     Padding(
                       padding: const EdgeInsets.only(right: 14),
                       child: Row(
@@ -629,8 +752,8 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
         return SlideTransition(
           position: Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero)
               .animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-              ),
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
           child: child,
         );
       },
@@ -681,7 +804,9 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             right: 0,
             height: imageHeight,
             child: Image.network(
-              'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=85',
+              _hotelImages.isNotEmpty
+                  ? _hotelImages.first
+                  : 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=85',
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => const ColoredBox(
                 color: Color(0xFFE7E9EC),
@@ -744,7 +869,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  widget.hotelName,
+                  _hotel?.name ?? widget.hotelName,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -758,15 +883,17 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (var index = 0; index < 5; index++)
+                    for (var index = 0;
+                        index < (_hotel?.starRating?.round() ?? 5);
+                        index++)
                       const Icon(
                         Icons.star_rounded,
                         color: Color(0xFFFFD21F),
                         size: 18,
                       ),
                     const SizedBox(width: 4),
-                    const Text(
-                      '5.0',
+                    Text(
+                      (_hotel?.starRating ?? 5).toStringAsFixed(1),
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 13,
@@ -891,14 +1018,16 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                             ),
                             child: Row(
                               children: [
-                                const Expanded(
+                                Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
-                                        'Hồ Chí Minh, Quận 2',
+                                        _hotel?.city.isNotEmpty == true
+                                            ? _hotel!.city
+                                            : 'Địa điểm khách sạn',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -909,7 +1038,9 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                                       ),
                                       SizedBox(height: 6),
                                       Text(
-                                        '19A Nguyễn Bá Huân, Thảo Điền, Thủ Đức',
+                                        _hotel?.address.isNotEmpty == true
+                                            ? _hotel!.address
+                                            : 'Địa chỉ đang được cập nhật.',
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -974,7 +1105,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             Transform.translate(
               offset: const Offset(0, 11),
               child: Text(
-                widget.hotelName,
+                _hotel?.name ?? widget.hotelName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(

@@ -9,6 +9,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import 'api/api_client.dart';
+import 'api/api_repository.dart';
+import 'api/models.dart';
+import 'destination_images.dart';
+
 part 'support.dart';
 part 'booking.dart';
 part 'hotel_search.dart';

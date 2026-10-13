@@ -16,11 +16,13 @@ class HotelSearchResultsPage extends StatefulWidget {
 
 class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
   late String _location;
+  late Future<List<Hotel>> _hotels;
 
   @override
   void initState() {
     super.initState();
     _location = widget.location;
+    _hotels = _loadHotels();
     widget.selection.addListener(_handleSelectionChanged);
   }
 
@@ -40,7 +42,141 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
   }
 
   void _handleSelectionChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        _hotels = _loadHotels();
+      });
+    }
+  }
+
+  Future<List<Hotel>> _loadHotels() async {
+    final hotels = await apiRepository.hotels();
+    final location = _normalizeLocation(_location);
+    final matchingHotels = hotels
+        .where((hotel) => _hotelMatchesLocation(hotel, location))
+        .toList();
+
+    final availability = await Future.wait(
+      matchingHotels.map(_hasRequiredAvailability),
+    );
+    return [
+      for (var index = 0; index < matchingHotels.length; index++)
+        if (availability[index]) matchingHotels[index],
+    ];
+  }
+
+  Future<bool> _hasRequiredAvailability(Hotel hotel) async {
+    final dateRange = widget.selection.dateRange;
+    final rooms = await apiRepository.availableRooms(
+      hotelId: hotel.id,
+      checkIn: _dateOnly(dateRange.start),
+      checkOut: _dateOnly(dateRange.end),
+    );
+    final requestedRooms = widget.selection.roomCount;
+    if (rooms.length < requestedRooms) return false;
+
+    final requestedGuests =
+        widget.selection.adultCount + widget.selection.childCount;
+    final capacities = rooms
+        .map((room) => room.maxGuests)
+        .whereType<int>()
+        .where((capacity) => capacity > 0)
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+    if (capacities.length < requestedRooms) return true;
+
+    final totalCapacity = capacities
+        .take(requestedRooms)
+        .fold<int>(0, (total, capacity) => total + capacity);
+    return totalCapacity >= requestedGuests;
+  }
+
+  String _dateOnly(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+
+  bool _hotelMatchesLocation(Hotel hotel, String location) {
+    final city = _normalizeLocation(hotel.city);
+    if (city.isNotEmpty) return city == location;
+    return _normalizeLocation(hotel.address).contains(location);
+  }
+
+  String _normalizeLocation(String value) {
+    const replacements = {
+      'à': 'a',
+      'á': 'a',
+      'ạ': 'a',
+      'ả': 'a',
+      'ã': 'a',
+      'ă': 'a',
+      'ằ': 'a',
+      'ắ': 'a',
+      'ặ': 'a',
+      'ẳ': 'a',
+      'ẵ': 'a',
+      'â': 'a',
+      'ầ': 'a',
+      'ấ': 'a',
+      'ậ': 'a',
+      'ẩ': 'a',
+      'ẫ': 'a',
+      'đ': 'd',
+      'è': 'e',
+      'é': 'e',
+      'ẹ': 'e',
+      'ẻ': 'e',
+      'ẽ': 'e',
+      'ê': 'e',
+      'ề': 'e',
+      'ế': 'e',
+      'ệ': 'e',
+      'ể': 'e',
+      'ễ': 'e',
+      'ì': 'i',
+      'í': 'i',
+      'ị': 'i',
+      'ỉ': 'i',
+      'ĩ': 'i',
+      'ò': 'o',
+      'ó': 'o',
+      'ọ': 'o',
+      'ỏ': 'o',
+      'õ': 'o',
+      'ô': 'o',
+      'ồ': 'o',
+      'ố': 'o',
+      'ộ': 'o',
+      'ổ': 'o',
+      'ỗ': 'o',
+      'ơ': 'o',
+      'ờ': 'o',
+      'ớ': 'o',
+      'ợ': 'o',
+      'ở': 'o',
+      'ỡ': 'o',
+      'ù': 'u',
+      'ú': 'u',
+      'ụ': 'u',
+      'ủ': 'u',
+      'ũ': 'u',
+      'ư': 'u',
+      'ừ': 'u',
+      'ứ': 'u',
+      'ự': 'u',
+      'ử': 'u',
+      'ữ': 'u',
+      'ỳ': 'y',
+      'ý': 'y',
+      'ỵ': 'y',
+      'ỷ': 'y',
+      'ỹ': 'y',
+    };
+    var normalized = value.trim().toLowerCase();
+    replacements.forEach((from, to) {
+      normalized = normalized.replaceAll(from, to);
+    });
+    return normalized.replaceAll(RegExp(r'[^a-z0-9]+'), '');
   }
 
   String _formatDate(DateTime date) => '${date.day}/${date.month}';
@@ -311,7 +447,10 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () {
-                        setState(() => _location = selectedLocation);
+                        setState(() {
+                          _location = selectedLocation;
+                          _hotels = _loadHotels();
+                        });
                         Navigator.of(context).pop();
                       },
                       style: ElevatedButton.styleFrom(
@@ -343,16 +482,26 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final hotels = List.generate(7, (index) => index + 1);
     final dateRange = widget.selection.dateRange;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F5F7),
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF19232D),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
         elevation: 0,
         titleSpacing: 0,
+        flexibleSpace: Stack(
+          fit: StackFit.expand,
+          children: [
+            DestinationImage(
+              location: _location,
+              networkUrl:
+                  'https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=1200&q=85',
+            ),
+            ColoredBox(color: Colors.black.withValues(alpha: 0.42)),
+          ],
+        ),
         title: Row(
           children: [
             Expanded(
@@ -373,7 +522,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF68727C),
+                      color: Colors.white70,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -392,25 +541,53 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: hotels.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final hotelNumber = hotels[index];
-                return _HotelResultCard(
-                  number: hotelNumber,
-                  location: _location,
-                  rating: 8.8 - index * 0.2,
-                  reviewCount: 482 + index * 37,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => HotelDetailPage(
-                        selection: widget.selection,
-                        hotelName: 'Khách sạn $hotelNumber',
+            child: FutureBuilder<List<Hotel>>(
+              future: _hotels,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return ListView(
+                    padding: const EdgeInsets.all(12),
+                    children: [
+                      const Text(
+                        'Không thể tải danh sách khách sạn theo bộ lọc đã chọn. '
+                        'Vui lòng thử lại.',
+                        style: TextStyle(color: Colors.black54),
                       ),
-                    ),
-                  ),
+                    ],
+                  );
+                }
+                final hotels = snapshot.data ?? const <Hotel>[];
+                if (hotels.isEmpty) {
+                  return const Center(child: Text('Chưa có khách sạn.'));
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: hotels.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final hotel = hotels[index];
+                    return _HotelResultCard(
+                      number: index + 1,
+                      hotelId: hotel.id,
+                      name: hotel.name,
+                      location: hotel.city.isEmpty ? _location : hotel.city,
+                      rating: hotel.starRating ?? 0,
+                      reviewCount: 0,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => HotelDetailPage(
+                            selection: widget.selection,
+                            hotelName: hotel.name,
+                            hotelId: hotel.id,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -423,6 +600,8 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
 
 class _HotelResultCard extends StatelessWidget {
   final int number;
+  final String hotelId;
+  final String name;
   final String location;
   final double rating;
   final int reviewCount;
@@ -430,6 +609,8 @@ class _HotelResultCard extends StatelessWidget {
 
   const _HotelResultCard({
     required this.number,
+    required this.hotelId,
+    required this.name,
     required this.location,
     required this.rating,
     required this.reviewCount,
@@ -450,25 +631,7 @@ class _HotelResultCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 112,
-                height: 142,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: number.isEven
-                        ? const [Color(0xFFB8D7E8), Color(0xFF557D91)]
-                        : const [Color(0xFFE9D9C2), Color(0xFF9D7856)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.hotel_rounded,
-                  color: Colors.white,
-                  size: 42,
-                ),
-              ),
+              _HotelResultImage(hotelId: hotelId, number: number),
               const SizedBox(width: 14),
               Expanded(
                 child: SizedBox(
@@ -477,7 +640,7 @@ class _HotelResultCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Khách sạn $number',
+                        name,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -554,6 +717,7 @@ class _HotelResultCard extends StatelessWidget {
       ),
     );
   }
+
 }
 
 class _NearbyPlace {
@@ -568,6 +732,51 @@ class _NearbyPlace {
     required this.category,
     required this.point,
   });
+}
+
+class _HotelResultImage extends StatelessWidget {
+  const _HotelResultImage({required this.hotelId, required this.number});
+
+  final String hotelId;
+  final int number;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<String>>(
+      future: apiRepository.hotelImages(hotelId),
+      builder: (context, snapshot) {
+        final images = snapshot.data ?? const <String>[];
+        final imageUrl = images.isEmpty ? null : images.first;
+        final colors = number.isEven
+            ? const [Color(0xFFB8D7E8), Color(0xFF557D91)]
+            : const [Color(0xFFE9D9C2), Color(0xFF9D7856)];
+        return Container(
+          width: 112,
+          height: 142,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: colors,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: imageUrl == null || imageUrl.isEmpty
+              ? const Icon(Icons.hotel_rounded, color: Colors.white, size: 42)
+              : Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.hotel_rounded,
+                    color: Colors.white,
+                    size: 42,
+                  ),
+                ),
+        );
+      },
+    );
+  }
 }
 
 class _HotelNearbyPlacesMap extends StatefulWidget {
@@ -603,8 +812,7 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
     try {
       final latitude = _hotelPoint.latitude;
       final longitude = _hotelPoint.longitude;
-      final query =
-          '[out:json][timeout:20];'
+      final query = '[out:json][timeout:20];'
           '('
           'nwr(around:$_radiusMeters,$latitude,$longitude)'
           '["tourism"~"^(attraction|museum|gallery|viewpoint)\$"];'
@@ -615,16 +823,14 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
           'nwr(around:$_radiusMeters,$latitude,$longitude)'
           '["historic"~"^(archaeological_site|castle|monument|memorial)\$"];'
           ');out center tags;';
-      final response = await http
-          .post(
-            Uri.https('overpass-api.de', '/api/interpreter'),
-            headers: const {
-              'User-Agent': 'app_mobile/1.0 (nearby hotel places map)',
-              'Accept': 'application/json',
-            },
-            body: {'data': query},
-          )
-          .timeout(const Duration(seconds: 25));
+      final response = await http.post(
+        Uri.https('overpass-api.de', '/api/interpreter'),
+        headers: const {
+          'User-Agent': 'app_mobile/1.0 (nearby hotel places map)',
+          'Accept': 'application/json',
+        },
+        body: {'data': query},
+      ).timeout(const Duration(seconds: 25));
 
       if (response.statusCode != 200) {
         throw http.ClientException(
@@ -655,8 +861,7 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
         final name = tags['name']?.toString().trim();
         if (name == null || name.isEmpty) continue;
 
-        final category =
-            tags['tourism']?.toString() ??
+        final category = tags['tourism']?.toString() ??
             tags['leisure']?.toString() ??
             tags['amenity']?.toString() ??
             tags['historic']?.toString() ??

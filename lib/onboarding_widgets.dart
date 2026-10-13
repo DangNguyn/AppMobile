@@ -108,6 +108,7 @@ class OnboardingTextField extends StatelessWidget {
     required this.label,
     this.hint,
     this.keyboardType,
+    this.obscureText = false,
     this.readOnly = false,
     this.onTap,
     this.validator,
@@ -119,6 +120,7 @@ class OnboardingTextField extends StatelessWidget {
   final String label;
   final String? hint;
   final TextInputType? keyboardType;
+  final bool obscureText;
   final bool readOnly;
   final VoidCallback? onTap;
   final String? Function(String?)? validator;
@@ -130,6 +132,7 @@ class OnboardingTextField extends StatelessWidget {
       key: fieldKey,
       controller: controller,
       keyboardType: keyboardType,
+      obscureText: obscureText,
       readOnly: readOnly,
       onTap: onTap,
       validator: validator,

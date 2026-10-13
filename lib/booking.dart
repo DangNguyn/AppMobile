@@ -1,7 +1,20 @@
 part of 'booking_app.dart';
 
-class BookingPage extends StatelessWidget {
+class BookingPage extends StatefulWidget {
   const BookingPage({super.key});
+
+  @override
+  State<BookingPage> createState() => _BookingPageState();
+}
+
+class _BookingPageState extends State<BookingPage> {
+  late Future<List<Booking>> _bookings;
+
+  @override
+  void initState() {
+    super.initState();
+    _bookings = apiRepository.bookings();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,19 +133,47 @@ class BookingPage extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(18, 24, 18, 28),
-            children: const [
-              _BookingSectionHeading(title: 'Bạn đã xem qua'),
-              SizedBox(height: 30),
-              _BookingSectionHeading(title: 'Thư viện Coupon'),
-              SizedBox(height: 30),
-              _BookingSectionHeading(title: 'Đề xuất'),
-              SizedBox(height: 30),
-              _BookingSectionHeading(
-                title: 'Tất cả giao dịch và hoạt động khác',
-              ),
-            ],
+          child: FutureBuilder<List<Booking>>(
+            future: _bookings,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${snapshot.error}'),
+                      TextButton(
+                        onPressed: () => setState(() => _bookings = apiRepository.bookings()),
+                        child: const Text('Thử lại'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              final bookings = snapshot.data ?? const <Booking>[];
+              if (bookings.isEmpty) {
+                return const Center(child: Text('Bạn chưa có đặt chỗ nào.'));
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.fromLTRB(18, 24, 18, 28),
+                itemCount: bookings.length,
+                separatorBuilder: (_, index) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final booking = bookings[index];
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.hotel_outlined),
+                      title: Text(booking.bookingCode ?? booking.id),
+                      subtitle: Text('${booking.checkIn} - ${booking.checkOut}'),
+                      trailing: Text(booking.status),
+                    ),
+                  );
+                },
+              );
+            },
           ),
         ),
       ],
