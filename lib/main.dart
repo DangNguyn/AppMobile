@@ -1,35 +1,11 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:http/http.dart' as http;
-import 'package:latlong2/latlong.dart';
 
-part 'support.dart';
-part 'booking.dart';
-part 'hotel_search.dart';
-part 'hotel.dart';
-part 'hotel_detail.dart';
-part 'room_detail.dart';
-part 'room_booking.dart';
-part 'home_widgets.dart';
-
-const List<String> _availableDestinations = [
-  'Đà Nẵng',
-  'Nha Trang',
-  'Hồ Chí Minh',
-  'Hà Nội',
-  'Đà Lạt',
-  'Phú Quốc',
-  'Hội An',
-  'Hạ Long',
-  'Huế',
-  'Sa Pa',
-];
+import 'account_page.dart';
+import 'onboarding_widgets.dart';
+import 'explore_page.dart';
+import 'user_service.dart';
+import 'welcome_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -50,7 +26,40 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2F80ED)),
         fontFamily: 'Roboto',
       ),
-      home: const TravelHomePage(),
+      home: const AppEntry(),
+    );
+  }
+}
+
+class AppEntry extends StatelessWidget {
+  const AppEntry({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: userService.isOnboardingCompleted(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Text('Không thể tải dữ liệu ứng dụng: ${snapshot.error}'),
+            ),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(color: onboardingBlue),
+            ),
+          );
+        }
+        if (!snapshot.data!) {
+          return WelcomeScreen(
+            homeBuilder: (_) => const TravelHomePage(),
+          );
+        }
+        return const TravelHomePage();
+      },
     );
   }
 }
@@ -64,32 +73,6 @@ class FixedEdgeScrollBehavior extends ScrollBehavior {
   }
 }
 
-class HotelSearchSelection extends ChangeNotifier {
-  DateTimeRange dateRange = DateTimeRange(
-    start: DateTime.now().add(const Duration(days: 1)),
-    end: DateTime.now().add(const Duration(days: 3)),
-  );
-  int roomCount = 1;
-  int adultCount = 2;
-  int childCount = 0;
-
-  void updateDateRange(DateTimeRange value) {
-    dateRange = value;
-    notifyListeners();
-  }
-
-  void updateGuests({
-    required int rooms,
-    required int adults,
-    required int children,
-  }) {
-    roomCount = rooms;
-    adultCount = adults;
-    childCount = children;
-    notifyListeners();
-  }
-}
-
 class TravelHomePage extends StatefulWidget {
   const TravelHomePage({super.key});
 
@@ -99,9 +82,31 @@ class TravelHomePage extends StatefulWidget {
 
 class _TravelHomePageState extends State<TravelHomePage> {
   final ScrollController _scrollController = ScrollController();
-  final HotelSearchSelection _hotelSearchSelection = HotelSearchSelection();
+  final Set<String> _savedArticleTitles = {};
   bool _showScrollTopButton = false;
   int _selectedNavIndex = 0;
+
+  void _toggleSavedArticle(TravelArticle article) {
+    setState(() {
+      if (!_savedArticleTitles.add(article.title)) {
+        _savedArticleTitles.remove(article.title);
+      }
+    });
+  }
+
+  Future<void> _restartOnboardingAfterLogout() async {
+    await userService.clearCustomerData();
+    if (!mounted) return;
+    _savedArticleTitles.clear();
+    Navigator.of(context).pushAndRemoveUntil<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => WelcomeScreen(
+          homeBuilder: (_) => const TravelHomePage(),
+        ),
+      ),
+      (route) => false,
+    );
+  }
 
   @override
   void initState() {
@@ -124,23 +129,11 @@ class _TravelHomePageState extends State<TravelHomePage> {
     );
   }
 
-  void _openHotelSearchResults(String location) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => HotelSearchResultsPage(
-          location: location,
-          selection: _hotelSearchSelection,
-        ),
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _scrollController
       ..removeListener(_handleScroll)
       ..dispose();
-    _hotelSearchSelection.dispose();
     super.dispose();
   }
 
@@ -175,62 +168,76 @@ class _TravelHomePageState extends State<TravelHomePage> {
           child: Column(
             children: [
               Expanded(
-                child: _selectedNavIndex == 2
-                    ? const BookingPage()
-                    : _selectedNavIndex == 3
-                    ? const SavedPage()
-                    : Stack(
-                        children: [
-                          SingleChildScrollView(
-                            controller: _scrollController,
-                            physics: const ClampingScrollPhysics(),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SearchPanel(
-                                  selection: _hotelSearchSelection,
-                                  onSearch: _openHotelSearchResults,
-                                ),
-                                const SizedBox(height: 18),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                child: _selectedNavIndex == 1
+                    ? ExplorePage(
+                        savedArticleTitles: _savedArticleTitles,
+                        onToggleSaved: _toggleSavedArticle,
+                      )
+                    : _selectedNavIndex == 2
+                        ? const BookingPage()
+                        : _selectedNavIndex == 3
+                            ? SavedPage(
+                                savedArticles: allTravelArticles
+                                    .where(
+                                      (article) => _savedArticleTitles
+                                          .contains(article.title),
+                                    )
+                                    .toList(),
+                                onRemoveArticle: _toggleSavedArticle,
+                              )
+                            : _selectedNavIndex == 4
+                                ? AccountScreen(
+                                    onLogout: _restartOnboardingAfterLogout,
+                                  )
+                                : Stack(
                                     children: [
-                                      const PromoStrip(),
-                                      const SizedBox(height: 20),
-                                      const SectionHeader(
-                                        title: 'Mã giảm số lượng có hạn',
+                                      SingleChildScrollView(
+                                        controller: _scrollController,
+                                        physics: const ClampingScrollPhysics(),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            const SearchPanel(),
+                                            const SizedBox(height: 18),
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 18,
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  const SectionHeader(
+                                                    title:
+                                                        'Mã giảm số lượng có hạn',
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  const CouponRow(),
+                                                  const SizedBox(height: 18),
+                                                  const HotelRowSection(),
+                                                  const SizedBox(height: 20),
+                                                  const BrandOfferSection(),
+                                                  const SizedBox(height: 18),
+                                                  const DiscoverBanner(),
+                                                  const SizedBox(height: 24),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                      const SizedBox(height: 12),
-                                      const CouponRow(),
-                                      const SizedBox(height: 18),
-                                      HotelRowSection(
-                                        selection: _hotelSearchSelection,
-                                      ),
-                                      const SizedBox(height: 20),
-                                      const BrandOfferSection(),
-                                      const SizedBox(height: 18),
-                                      const DiscoverBanner(),
-                                      const SizedBox(height: 24),
+                                      if (_showScrollTopButton)
+                                        Positioned(
+                                          bottom: 12,
+                                          left: 0,
+                                          right: 0,
+                                          child: ScrollTopButton(
+                                              onPressed: _scrollToTop),
+                                        ),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (_showScrollTopButton)
-                            Positioned(
-                              bottom: 12,
-                              left: 0,
-                              right: 0,
-                              child: ScrollTopButton(onPressed: _scrollToTop),
-                            ),
-                        ],
-                      ),
               ),
               Container(
                 decoration: const BoxDecoration(
@@ -261,13 +268,30 @@ class _TravelHomePageState extends State<TravelHomePage> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              navIcons[index],
-                              size: 30,
-                              color: isActive
-                                  ? const Color(0xFF1B6EEB)
-                                  : const Color(0xFF7F8AA0),
-                            ),
+                            if (index == 0)
+                              ColorFiltered(
+                                colorFilter: ColorFilter.mode(
+                                  isActive
+                                      ? const Color(0xFF1B6EEB)
+                                      : const Color(0xFF7F8AA0),
+                                  BlendMode.srcIn,
+                                ),
+                                child: Image.asset(
+                                  'assets/images/fomogo_mark.png',
+                                  width: 30,
+                                  height: 30,
+                                  fit: BoxFit.contain,
+                                  semanticLabel: 'FomoGo',
+                                ),
+                              )
+                            else
+                              Icon(
+                                navIcons[index],
+                                size: 30,
+                                color: isActive
+                                    ? const Color(0xFF1B6EEB)
+                                    : const Color(0xFF7F8AA0),
+                              ),
                             const SizedBox(height: 6),
                             Text(
                               navLabels[index],
@@ -292,6 +316,2629 @@ class _TravelHomePageState extends State<TravelHomePage> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class DiscountIconButton extends StatefulWidget {
+  const DiscountIconButton({super.key});
+
+  @override
+  State<DiscountIconButton> createState() => _DiscountIconButtonState();
+}
+
+class _DiscountIconButtonState extends State<DiscountIconButton> {
+  bool _isHovered = false;
+  bool _isPressed = false;
+
+  bool get _isHighlighted => _isHovered || _isPressed;
+
+  void _openDiscountPage() {
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const DiscountPage()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: _openDiscountPage,
+          onTapDown: (_) => setState(() => _isPressed = true),
+          onTapUp: (_) => setState(() => _isPressed = false),
+          onTapCancel: () => setState(() => _isPressed = false),
+          customBorder: const CircleBorder(),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white,
+                width: _isHighlighted ? 2.5 : 1.5,
+              ),
+              boxShadow: _isHighlighted
+                  ? [
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.95),
+                        blurRadius: 22,
+                        spreadRadius: 7,
+                      ),
+                    ]
+                  : const [],
+            ),
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 140),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: _isHighlighted ? 20 : 17,
+                fontWeight: _isHighlighted ? FontWeight.w900 : FontWeight.w500,
+                shadows: _isHighlighted
+                    ? const [Shadow(color: Colors.white, blurRadius: 12)]
+                    : const [],
+              ),
+              child: const Text('%'),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class DiscountPage extends StatelessWidget {
+  const DiscountPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF0E1F38),
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7F8FA),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF0E1F38),
+          foregroundColor: Colors.white,
+          title: const Text('Mã giảm giá'),
+          elevation: 0,
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            Container(
+              height: 160,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFDDE2E7)),
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class CustomerSupportIconButton extends StatefulWidget {
+  const CustomerSupportIconButton({super.key});
+
+  @override
+  State<CustomerSupportIconButton> createState() =>
+      _CustomerSupportIconButtonState();
+}
+
+class _CustomerSupportIconButtonState extends State<CustomerSupportIconButton> {
+  bool _isHovered = false;
+
+  void _openSupportPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const CustomerSupportPage()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: IconButton(
+          tooltip: 'Hỗ trợ khách hàng',
+          onPressed: _openSupportPage,
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          icon: Icon(
+            Icons.chat_bubble_outline_rounded,
+            color: _isHovered ? const Color(0xFFB8D9FF) : Colors.white,
+            size: 21,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CustomerSupportPage extends StatefulWidget {
+  const CustomerSupportPage({super.key});
+
+  @override
+  State<CustomerSupportPage> createState() => _CustomerSupportPageState();
+}
+
+class _CustomerSupportPageState extends State<CustomerSupportPage> {
+  int _selectedTab = 0;
+  int _selectedFilter = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    const tabs = ['Trò chuyện', 'Thông báo'];
+    const filters = ['Tất cả', 'Đang tiến hành', 'Đã đóng'];
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF0E1F38),
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  MediaQuery.of(context).padding.top + 10,
+                  18,
+                  16,
+                ),
+                color: const Color(0xFF0E1F38),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'Hộp thư đến',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 48),
+                  ],
+                ),
+              ),
+              Row(
+                children: List.generate(tabs.length, (index) {
+                  final isSelected = index == _selectedTab;
+                  return Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedTab = index),
+                      child: Container(
+                        height: 54,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: isSelected
+                                  ? const Color(0xFF2A6EEB)
+                                  : const Color(0xFFE1E5E9),
+                              width: isSelected ? 3 : 1,
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          tabs[index],
+                          style: TextStyle(
+                            color: isSelected
+                                ? const Color(0xFF2A6EEB)
+                                : const Color(0xFF6D747B),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              Expanded(
+                child: _selectedTab == 0
+                    ? _buildChats(filters)
+                    : _buildNotifications(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChats(List<String> filters) {
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0E1F38),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.support_agent_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Đừng bỏ lỡ phản hồi từ Dịch vụ Khách hàng của chúng tôi!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Nhận thông báo',
+                  style: TextStyle(
+                    color: Color(0xFF0E1F38),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 64,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            scrollDirection: Axis.horizontal,
+            itemCount: filters.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final isSelected = index == _selectedFilter;
+              return InkWell(
+                onTap: () => setState(() => _selectedFilter = index),
+                borderRadius: BorderRadius.circular(22),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFFE4F4FC)
+                        : const Color(0xFFF5F7F9),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Text(
+                    filters[index],
+                    style: const TextStyle(
+                      color: Color(0xFF0E1F38),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.support_agent_rounded,
+                    color: Color(0xFF2A6EEB),
+                    size: 88,
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Hôm nay chúng tôi có thể giúp gì cho bạn?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF252A30),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Bạn không có yêu cầu nào đang hoạt động. Bắt đầu cuộc trò chuyện mới để được hỗ trợ về đặt chỗ hoặc các câu hỏi khác.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF7B8288),
+                      fontSize: 15,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: () {},
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFE4F4FC),
+                      foregroundColor: const Color(0xFF0E1F38),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 14,
+                      ),
+                      shape: const StadiumBorder(),
+                    ),
+                    child: const Text(
+                      'Bắt đầu cuộc trò chuyện mới',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(0, 0, 18, 18),
+            child: FilledButton.icon(
+              onPressed: () {},
+              icon: const Icon(Icons.support_agent_rounded, size: 20),
+              label: const Text('Cần thêm trợ giúp?'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE4F4FC),
+                foregroundColor: const Color(0xFF0E1F38),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+                shape: const StadiumBorder(),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNotifications() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(
+              Icons.notifications_none_rounded,
+              color: Color(0xFF2A6EEB),
+              size: 80,
+            ),
+            SizedBox(height: 18),
+            Text(
+              'Chưa có thông báo',
+              style: TextStyle(
+                color: Color(0xFF252A30),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class BookingPage extends StatelessWidget {
+  const BookingPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.fromLTRB(
+            18,
+            MediaQuery.of(context).padding.top + 12,
+            18,
+            16,
+          ),
+          color: const Color(0xFF0E1F38),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 48,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.search,
+                            color: Color(0xFF7F8790),
+                            size: 24,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Tìm kiếm mặt hàng, điểm đến...',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF858B91),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  const DiscountIconButton(),
+                  const SizedBox(width: 18),
+                  const CustomerSupportIconButton(),
+                ],
+              ),
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Đặt chỗ',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.headset_mic_outlined,
+                      color: Color(0xFF2A6EEB),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: const Row(
+                      children: [
+                        Text(
+                          'Tất cả giao dịch',
+                          style: TextStyle(
+                            color: Color(0xFF2A6EEB),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(
+                          Icons.receipt_long_outlined,
+                          color: Color(0xFF2A6EEB),
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+            children: [
+              const _BookingSectionHeading(title: 'Bạn đã xem qua'),
+              const SizedBox(height: 10),
+              const _BookingEmptyState(),
+              const SizedBox(height: 20),
+              _BookingSectionTitle(
+                title: 'Thư viện Coupon',
+                subtitle: 'Ưu đãi dành cho đặt phòng khách sạn',
+                icon: Icons.local_offer_outlined,
+              ),
+              const SizedBox(height: 10),
+              const _CouponPlaceholderCarousel(),
+              const SizedBox(height: 20),
+              _BookingSectionTitle(
+                title: 'Đề xuất tuyệt vời',
+                subtitle: 'Khách sạn phù hợp cho chuyến đi của bạn',
+                icon: Icons.local_fire_department_rounded,
+              ),
+              const SizedBox(height: 10),
+              const _RecommendationPlaceholderCarousel(),
+              const SizedBox(height: 22),
+              const _BookingSectionHeading(
+                title: 'Tất cả giao dịch và hoạt động khác',
+              ),
+              const SizedBox(height: 14),
+              const _BookingActivityShortcuts(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BookingEmptyState extends StatelessWidget {
+  const _BookingEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE6F5FF), Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE0EDF6)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 68,
+            height: 60,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD8F0FF),
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: const Icon(
+              Icons.luggage_outlined,
+              color: Color(0xFF1688D4),
+              size: 38,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Chưa có đặt chỗ, nhưng thế giới đang mời gọi bạn',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF17202C),
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Sau khi đặt, vé điện tử hoặc voucher sẽ xuất hiện tại đây. Hãy bắt đầu chuyến đi mới của bạn.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF737E8A),
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 10),
+            child: Divider(height: 1, color: Color(0xFFE0E8EF)),
+          ),
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              const Text(
+                'Không tìm thấy lượt đặt phòng?',
+                style: TextStyle(color: Color(0xFF77818B), fontSize: 12),
+              ),
+              TextButton(
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Tính năng tra cứu đặt phòng sẽ sớm có mặt.'),
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  backgroundColor: const Color(0xFFDDF2FF),
+                  foregroundColor: const Color(0xFF1768A8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: const Text(
+                  'Lấy lại thông tin đặt phòng',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BookingSectionTitle extends StatelessWidget {
+  const _BookingSectionTitle({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: const Color(0xFF2A6EEB), size: 19),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        color: Color(0xFF202833),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: Color(0xFF858E98),
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Icon(
+          Icons.chevron_right_rounded,
+          color: Color(0xFF1688E8),
+          size: 28,
+        ),
+      ],
+    );
+  }
+}
+
+class _CouponPlaceholderCarousel extends StatelessWidget {
+  const _CouponPlaceholderCarousel();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 166,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: 3,
+        separatorBuilder: (context, index) => const SizedBox(width: 12),
+        itemBuilder: (context, index) => const _CouponPlaceholderCard(),
+      ),
+    );
+  }
+}
+
+class _CouponPlaceholderCard extends StatelessWidget {
+  const _CouponPlaceholderCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 280,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8EDF3)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x100E1F38),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE5F6FF),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.confirmation_num_outlined,
+                    color: Color(0xFF28A9DD),
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _PlaceholderBar(width: 150, height: 14),
+                      SizedBox(height: 9),
+                      _PlaceholderBar(width: 188, height: 10),
+                      SizedBox(height: 6),
+                      _PlaceholderBar(width: 126, height: 10),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.info_outline,
+                  color: Color(0xFF7D8995),
+                  size: 19,
+                ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Divider(
+              height: 1,
+              color: Color(0xFFDCEFFC),
+              thickness: 1.5,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F6F9),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    alignment: Alignment.center,
+                    child: const _PlaceholderBar(width: 96, height: 10),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  height: 38,
+                  width: 92,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDDF2FF),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  alignment: Alignment.center,
+                  child: const _PlaceholderBar(width: 42, height: 11),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecommendationPlaceholderCarousel extends StatelessWidget {
+  const _RecommendationPlaceholderCarousel();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 274,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: 3,
+        separatorBuilder: (context, index) => const SizedBox(width: 12),
+        itemBuilder: (context, index) => const _RecommendationPlaceholderCard(),
+      ),
+    );
+  }
+}
+
+class _RecommendationPlaceholderCard extends StatelessWidget {
+  const _RecommendationPlaceholderCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 218,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8EDF3)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x100E1F38),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 118,
+            width: double.infinity,
+            color: const Color(0xFFE7EEF5),
+            child: const Icon(
+              Icons.image_outlined,
+              color: Color(0xFF9AA9B8),
+              size: 34,
+            ),
+          ),
+          Container(
+            height: 34,
+            width: double.infinity,
+            color: const Color(0xFF2869AA),
+            alignment: Alignment.center,
+            child: const _PlaceholderBar(width: 126, height: 11),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _PlaceholderBar(width: 166, height: 13),
+                const SizedBox(height: 10),
+                const _PlaceholderBar(width: 126, height: 10),
+                const SizedBox(height: 13),
+                Row(
+                  children: [
+                    const _PlaceholderBar(width: 60, height: 12),
+                    const Spacer(),
+                    Container(
+                      width: 58,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F1FF),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const _PlaceholderBar(width: 96, height: 10),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaceholderBar extends StatelessWidget {
+  const _PlaceholderBar({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE7ECF1),
+        borderRadius: BorderRadius.circular(height),
+      ),
+    );
+  }
+}
+
+class _BookingActivityShortcuts extends StatelessWidget {
+  const _BookingActivityShortcuts();
+
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      (Icons.receipt_long_outlined, 'Tất cả giao dịch'),
+      (Icons.manage_search_rounded, 'Lấy lại thông tin'),
+      (Icons.currency_exchange_rounded, 'Hoàn tiền'),
+      (Icons.rate_review_outlined, 'Đánh giá & nhận xét'),
+    ];
+
+    return SizedBox(
+      height: 112,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return Container(
+            width: 112,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE8EDF3)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0D0E1F38),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(item.$1, color: const Color(0xFF1688D4), size: 25),
+                const Spacer(),
+                Text(
+                  item.$2,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF27303B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _BookingSectionHeading extends StatelessWidget {
+  final String title;
+
+  const _BookingSectionHeading({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Color(0xFF202833),
+        fontSize: 17,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+}
+
+class SavedPage extends StatelessWidget {
+  const SavedPage({
+    super.key,
+    required this.savedArticles,
+    required this.onRemoveArticle,
+  });
+
+  final List<TravelArticle> savedArticles;
+  final ValueChanged<TravelArticle> onRemoveArticle;
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(
+              18,
+              MediaQuery.of(context).padding.top + 12,
+              18,
+              16,
+            ),
+            color: const Color(0xFF0E1F38),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.search, color: Color(0xFF7F8790), size: 24),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Tìm kiếm mặt hàng, điểm đến...',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF858B91),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 18),
+                const DiscountIconButton(),
+                const SizedBox(width: 18),
+                const CustomerSupportIconButton(),
+              ],
+            ),
+          ),
+          Material(
+            color: const Color(0xFFF7F8FA),
+            child: const TabBar(
+              labelColor: Color(0xFF2A6EEB),
+              unselectedLabelColor: Color(0xFF7D858D),
+              indicatorColor: Color(0xFF2A6EEB),
+              labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              tabs: [
+                Tab(text: 'Thông tin đã lưu'),
+                Tab(text: 'Khách sạn đã lưu'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Container(
+              color: const Color(0xFFF7F8FA),
+              child: TabBarView(
+                children: [
+                  _SavedArticlesTab(
+                    articles: savedArticles,
+                    onRemoveArticle: onRemoveArticle,
+                  ),
+                  ListView(
+                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 24),
+                    children: const [
+                      _SavedProductsCard(),
+                      SizedBox(height: 18),
+                      _SavedCollectionsCard(),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SavedArticlesTab extends StatelessWidget {
+  const _SavedArticlesTab({
+    required this.articles,
+    required this.onRemoveArticle,
+  });
+
+  final List<TravelArticle> articles;
+  final ValueChanged<TravelArticle> onRemoveArticle;
+
+  @override
+  Widget build(BuildContext context) {
+    if (articles.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.bookmark_border_rounded,
+                color: Color(0xFF2A6EEB),
+                size: 54,
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Bài viết bạn lưu sẽ xuất hiện tại đây',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF58616D),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+      children: [
+        Text(
+          '${articles.length} bài viết du lịch',
+          style: const TextStyle(
+            color: Color(0xFF17202C),
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...articles.map(
+          (article) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _SavedArticleCard(
+              article: article,
+              onRemove: () => onRemoveArticle(article),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SavedArticleCard extends StatelessWidget {
+  const _SavedArticleCard({
+    required this.article,
+    required this.onRemove,
+  });
+
+  final TravelArticle article;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: 112,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 112,
+              height: double.infinity,
+              child: Image.network(
+                article.imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const ColoredBox(
+                  color: Color(0xFFE8F1FF),
+                  child:
+                      Icon(Icons.landscape_outlined, color: Color(0xFF2A6EEB)),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 6, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      article.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF17202C),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          color: Color(0xFF2A6EEB),
+                          size: 15,
+                        ),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            article.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF66707D),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Bỏ lưu bài viết',
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 32,
+                            height: 32,
+                          ),
+                          padding: EdgeInsets.zero,
+                          onPressed: onRemove,
+                          icon: const Icon(
+                            Icons.bookmark_rounded,
+                            color: Color(0xFF2A6EEB),
+                            size: 19,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedProductsCard extends StatelessWidget {
+  const _SavedProductsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 150,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Khách sạn đã lưu  →',
+              style: TextStyle(
+                color: Color(0xFF2A6EEB),
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 145,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8EDF2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8EDF2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8EDF2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SavedCollectionsCard extends StatelessWidget {
+  const _SavedCollectionsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 110,
+                height: 112,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF4FC),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.collections_bookmark_rounded,
+                  color: Color(0xFF2A6EEB),
+                  size: 64,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hãy sắp xếp khách sạn yêu thích!',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF19232D),
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Tạo danh sách khách sạn yêu thích để lên kế hoạch cho chuyến đi tiếp theo.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: Color(0xFF7D858D),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 16),
+            child: Divider(height: 1, color: Color(0xFFD9DDE1)),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'Tạo bộ sưu tập mới',
+              style: TextStyle(
+                color: Color(0xFF2A6EEB),
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SearchPanel extends StatefulWidget {
+  const SearchPanel({super.key});
+
+  @override
+  State<SearchPanel> createState() => _SearchPanelState();
+}
+
+class _SearchPanelState extends State<SearchPanel> {
+  final List<String> _destinations = [
+    'Đà Nẵng',
+    'Nha Trang',
+    'Hồ Chí Minh',
+    'Hà Nội',
+    'Đà Lạt',
+    'Phú Quốc',
+    'Hội An',
+    'Hạ Long',
+    'Huế',
+    'Sa Pa',
+  ];
+
+  String _selectedLocation = 'Địa điểm';
+  DateTimeRange _dateRange = DateTimeRange(
+    start: DateTime.now().add(const Duration(days: 1)),
+    end: DateTime.now().add(const Duration(days: 3)),
+  );
+  int _roomCount = 1;
+  int _adultCount = 2;
+  int _childCount = 0;
+
+  String _formatDate(DateTime date) {
+    final weekday = <String>[
+      'Th 2',
+      'Th 3',
+      'Th 4',
+      'Th 5',
+      'Th 6',
+      'Th 7',
+      'CN',
+    ];
+    final month = date.month;
+    final day = date.day;
+    return '${weekday[date.weekday - 1]}, $day thg $month';
+  }
+
+  void _pickLocation() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.65,
+              child: Column(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 5,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: _destinations.length,
+                      itemBuilder: (context, index) {
+                        final item = _destinations[index];
+                        final isSelected = item == _selectedLocation;
+                        return ListTile(
+                          title: Text(
+                            item,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          trailing: isSelected
+                              ? const Icon(
+                                  Icons.check,
+                                  color: Color(0xFF2A6EEB),
+                                )
+                              : null,
+                          onTap: () => Navigator.of(context).pop(item),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selected != null && mounted) {
+      setState(() => _selectedLocation = selected);
+    }
+  }
+
+  void _pickDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: _dateRange,
+      helpText: 'Chọn ngày nhận phòng',
+      saveText: 'Xác nhận',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF2A6EEB),
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      setState(() => _dateRange = picked);
+    }
+  }
+
+  void _pickGuestOptions() async {
+    final result = await showModalBottomSheet<Map<String, int>>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        int room = _roomCount;
+        int adult = _adultCount;
+        int child = _childCount;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                    _GuestPickerRow(
+                      label: 'Phòng',
+                      value: room,
+                      minValue: 1,
+                      maxValue: 10,
+                      onChanged: (value) => setModalState(() => room = value),
+                    ),
+                    const SizedBox(height: 12),
+                    _GuestPickerRow(
+                      label: 'Người lớn',
+                      value: adult,
+                      minValue: 1,
+                      maxValue: 10,
+                      onChanged: (value) => setModalState(() => adult = value),
+                    ),
+                    const SizedBox(height: 12),
+                    _GuestPickerRow(
+                      label: 'Trẻ em',
+                      value: child,
+                      minValue: 0,
+                      maxValue: 10,
+                      onChanged: (value) => setModalState(() => child = value),
+                    ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(
+                            context,
+                          ).pop({'room': room, 'adult': adult, 'child': child});
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2A6EEB),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          'Xác nhận',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _roomCount = result['room'] ?? _roomCount;
+        _adultCount = result['adult'] ?? _adultCount;
+        _childCount = result['child'] ?? _childCount;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nights = _dateRange.duration.inDays;
+
+    return SizedBox(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 37,
+            child: DecoratedBox(
+              key: const ValueKey('home_search_blue_background'),
+              decoration: const BoxDecoration(
+                color: Color(0xFF0E1F38),
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(24),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 56,
+              ),
+              child: Transform.translate(
+                offset: const Offset(0, 12),
+                child: Column(
+                  children: [
+                    Container(
+                      key: const ValueKey('home_search_form'),
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        border: Border(
+                          top: BorderSide(color: Color(0xFFE91E63), width: 2),
+                          left: BorderSide(color: Color(0xFFE91E63), width: 2),
+                          right: BorderSide(color: Color(0xFFE91E63), width: 2),
+                        ),
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(16),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          InkWell(
+                            onTap: _pickLocation,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.location_on_outlined,
+                                        color: Colors.black,
+                                        size: 19,
+                                      ),
+                                      const SizedBox(width: 9),
+                                      Text(
+                                        _selectedLocation,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Container(
+                                    width: 26,
+                                    height: 26,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE8F1FF),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: const Icon(
+                                      Icons.gps_fixed,
+                                      color: Color(0xFF2A6EEB),
+                                      size: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 7),
+                            child: Divider(
+                              height: 1,
+                              color: Color(0xFFE3E5E8),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: _pickDateRange,
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 3,
+                                      horizontal: 2,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.calendar_today_outlined,
+                                          color: Colors.black87,
+                                          size: 17,
+                                        ),
+                                        const SizedBox(width: 7),
+                                        Expanded(
+                                          child: Text(
+                                            '${_formatDate(_dateRange.start)} - ${_formatDate(_dateRange.end)}\n$nights đêm',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              height: 1.25,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                height: 34,
+                                width: 1,
+                                color: const Color(0xFFE3E5E8),
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: _pickGuestOptions,
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 3,
+                                      horizontal: 2,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.people_alt_outlined,
+                                          color: Colors.black87,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 7),
+                                        Expanded(
+                                          child: Text(
+                                            '$_roomCount phòng · $_adultCount người lớn · $_childCount trẻ',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              height: 1.25,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 9),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDFEBFF),
+                                    borderRadius: BorderRadius.circular(11),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      'Bản đồ',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF2A6EEB),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Container(
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2A6EEB),
+                                    borderRadius: BorderRadius.circular(11),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      'Tìm kiếm',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const PromoStrip(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 14,
+            right: 10,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Image.asset(
+                  'assets/images/fomogo_logo.png',
+                  width: 112,
+                  height: 50,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerLeft,
+                  semanticLabel: 'FomoGo',
+                ),
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DiscountIconButton(),
+                    SizedBox(width: 12),
+                    CustomerSupportIconButton(),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuestPickerRow extends StatefulWidget {
+  final String label;
+  final int value;
+  final int minValue;
+  final int maxValue;
+  final ValueChanged<int> onChanged;
+
+  const _GuestPickerRow({
+    required this.label,
+    required this.value,
+    required this.minValue,
+    required this.maxValue,
+    required this.onChanged,
+  });
+
+  @override
+  State<_GuestPickerRow> createState() => _GuestPickerRowState();
+}
+
+class _GuestPickerRowState extends State<_GuestPickerRow> {
+  late final TextEditingController _controller;
+  bool _isEmpty = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value.toString());
+  }
+
+  @override
+  void didUpdateWidget(covariant _GuestPickerRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value &&
+        _controller.text != widget.value.toString()) {
+      _controller.text = widget.value.toString();
+      _isEmpty = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _applyValue(String raw) {
+    if (raw.isEmpty) {
+      _isEmpty = true;
+      _controller.text = '';
+      _controller.selection = TextSelection.fromPosition(
+        const TextPosition(offset: 0),
+      );
+      return;
+    }
+
+    final parsed = int.tryParse(raw);
+    if (parsed == null) {
+      _controller.text = _isEmpty ? '' : widget.value.toString();
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: _controller.text.length),
+      );
+      return;
+    }
+
+    final clamped = parsed.clamp(widget.minValue, widget.maxValue);
+    _isEmpty = false;
+    widget.onChanged(clamped);
+    if (_controller.text != clamped.toString()) {
+      _controller.text = clamped.toString();
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: _controller.text.length),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int currentValue = widget.value;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          widget.label,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
+        Row(
+          children: [
+            IconButton(
+              onPressed: () => widget.onChanged(
+                (currentValue - 1).clamp(widget.minValue, widget.maxValue),
+              ),
+              icon: const Icon(Icons.remove_circle_outline),
+            ),
+            SizedBox(
+              width: 62,
+              child: TextField(
+                controller: _controller,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                onChanged: _applyValue,
+              ),
+            ),
+            IconButton(
+              onPressed: () => widget.onChanged(
+                (currentValue + 1).clamp(widget.minValue, widget.maxValue),
+              ),
+              icon: const Icon(Icons.add_circle_outline),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class PromoStrip extends StatelessWidget {
+  const PromoStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFDA3C74),
+        border: Border.all(color: const Color(0xFFE91E63), width: 2),
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(16),
+        ),
+      ),
+      child: RichText(
+        text: const TextSpan(
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.4,
+          ),
+          children: [
+            TextSpan(
+              text: '10.10',
+              style: TextStyle(color: Colors.white),
+            ),
+            WidgetSpan(child: SizedBox(width: 10)),
+            TextSpan(
+              text: 'Sàn ưu đãi hot chi có ở EPIC Sale 10.10!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SectionHeader extends StatelessWidget {
+  final String title;
+
+  const SectionHeader({super.key, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w800,
+        color: Colors.black,
+      ),
+    );
+  }
+}
+
+class CouponRow extends StatefulWidget {
+  const CouponRow({super.key});
+
+  @override
+  State<CouponRow> createState() => _CouponRowState();
+}
+
+class _CouponRowState extends State<CouponRow> {
+  int _selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = [
+      'Dành riêng cho bạn',
+      'Mã cả ngày',
+      'Tổng cực D',
+      'Mã khách sạn',
+    ];
+
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: ClampingScrollPhysics(),
+        ),
+        itemCount: labels.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 12),
+        itemBuilder: (context, index) => _TagChip(
+          label: labels[index],
+          isActive: index == _selectedIndex,
+          onTap: () => setState(() => _selectedIndex = index),
+        ),
+      ),
+    );
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _TagChip({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFF2A6EEB) : const Color(0xFFE8EEF8),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isActive ? Colors.white : const Color(0xFF2A6EEB),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class HotelRowSection extends StatefulWidget {
+  const HotelRowSection({super.key});
+
+  @override
+  State<HotelRowSection> createState() => _HotelRowSectionState();
+}
+
+class _HotelRowSectionState extends State<HotelRowSection> {
+  int _selectedIndex = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = ['Lên đến 250K/đ', 'Sắp hết', 'Giá tốt', 'Ưu đãi hôm nay'];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Khách sạn',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: ClampingScrollPhysics(),
+            ),
+            itemCount: labels.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) => _InlinePill(
+              label: labels[index],
+              isSelected: index == _selectedIndex,
+              onTap: () => setState(
+                () => _selectedIndex = _selectedIndex == index ? -1 : index,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlinePill extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _InlinePill({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color:
+                isSelected ? const Color(0xFF2A6EEB) : const Color(0xFFF5F5F7),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: isSelected ? Colors.white : Colors.black87,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class BrandOfferSection extends StatelessWidget {
+  const BrandOfferSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Ưu đãi thương hiệu 10.10',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          height: 138,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: const [
+                SizedBox(
+                  width: 130,
+                  child: BrandOfferCard(
+                    color: Color(0xFFD7C298),
+                    title: 'MƯỜNG THANH',
+                    discount: '20%',
+                  ),
+                ),
+                SizedBox(width: 14),
+                SizedBox(
+                  width: 130,
+                  child: BrandOfferCard(
+                    color: Color(0xFFE5D4A6),
+                    title: 'HANOI BLISS',
+                    discount: '20%',
+                  ),
+                ),
+                SizedBox(width: 14),
+                SizedBox(
+                  width: 130,
+                  child: BrandOfferCard(
+                    color: Color(0xFF3F78D7),
+                    title: 'HOTELS & RESORTS',
+                    discount: '40%',
+                  ),
+                ),
+                SizedBox(width: 14),
+                SizedBox(
+                  width: 130,
+                  child: BrandOfferCard(
+                    color: Color(0xFF59A88A),
+                    title: 'MELIÁ HOTELS',
+                    discount: '30%',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class BrandOfferCard extends StatelessWidget {
+  final Color color;
+  final String title;
+  final String discount;
+
+  const BrandOfferCard({
+    super.key,
+    required this.color,
+    required this.title,
+    required this.discount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 138,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Giảm đến',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.9),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            discount,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 0.9,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DiscoverBanner extends StatelessWidget {
+  const DiscoverBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Vô vàn ưu đãi khác',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: Container(
+                height: 180,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFD8D4A8), Color(0xFFB8C480)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 22,
+                      left: 30,
+                      right: 30,
+                      bottom: 20,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 24,
+                      right: 24,
+                      bottom: 18,
+                      child: Container(
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 36,
+                      bottom: 50,
+                      child: Container(
+                        width: 100,
+                        height: 150,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Container(
+                height: 180,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE9D864),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Du lịch',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF0E3A91),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'Úc',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF0E3A91),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Giảm đến',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF0E3A91),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      '50%',
+                      style: TextStyle(
+                        fontSize: 24,
+                        color: Color(0xFF0E3A91),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class ScrollTopButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const ScrollTopButton({super.key, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8EBF5),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Text(
+              'Lên đầu trang',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF2A6EEB),
+              ),
+            ),
           ),
         ),
       ),
