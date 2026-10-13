@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of 'booking_app.dart';
 
 class SearchPanel extends StatefulWidget {
   final HotelSearchSelection selection;

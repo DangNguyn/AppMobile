@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of 'booking_app.dart';
 
 class HotelDetailPage extends StatefulWidget {
   final HotelSearchSelection selection;

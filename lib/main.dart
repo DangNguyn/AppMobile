@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'account_page.dart';
-import 'onboarding_widgets.dart';
+import 'booking_app.dart' as hotel_booking;
 import 'explore_page.dart';
+import 'onboarding_widgets.dart';
 import 'user_service.dart';
 import 'welcome_screen.dart';
 
@@ -54,9 +55,7 @@ class AppEntry extends StatelessWidget {
           );
         }
         if (!snapshot.data!) {
-          return WelcomeScreen(
-            homeBuilder: (_) => const TravelHomePage(),
-          );
+          return WelcomeScreen(homeBuilder: (_) => const TravelHomePage());
         }
         return const TravelHomePage();
       },
@@ -100,9 +99,8 @@ class _TravelHomePageState extends State<TravelHomePage> {
     _savedArticleTitles.clear();
     Navigator.of(context).pushAndRemoveUntil<void>(
       MaterialPageRoute<void>(
-        builder: (_) => WelcomeScreen(
-          homeBuilder: (_) => const TravelHomePage(),
-        ),
+        builder: (_) =>
+            WelcomeScreen(homeBuilder: (_) => const TravelHomePage()),
       ),
       (route) => false,
     );
@@ -174,70 +172,64 @@ class _TravelHomePageState extends State<TravelHomePage> {
                         onToggleSaved: _toggleSavedArticle,
                       )
                     : _selectedNavIndex == 2
-                        ? const BookingPage()
-                        : _selectedNavIndex == 3
-                            ? SavedPage(
-                                savedArticles: allTravelArticles
-                                    .where(
-                                      (article) => _savedArticleTitles
-                                          .contains(article.title),
-                                    )
-                                    .toList(),
-                                onRemoveArticle: _toggleSavedArticle,
-                              )
-                            : _selectedNavIndex == 4
-                                ? AccountScreen(
-                                    onLogout: _restartOnboardingAfterLogout,
-                                  )
-                                : Stack(
+                    ? const BookingPage()
+                    : _selectedNavIndex == 3
+                    ? SavedPage(
+                        savedArticles: allTravelArticles
+                            .where(
+                              (article) =>
+                                  _savedArticleTitles.contains(article.title),
+                            )
+                            .toList(),
+                        onRemoveArticle: _toggleSavedArticle,
+                      )
+                    : _selectedNavIndex == 4
+                    ? AccountScreen(onLogout: _restartOnboardingAfterLogout)
+                    : Stack(
+                        children: [
+                          SingleChildScrollView(
+                            controller: _scrollController,
+                            physics: const ClampingScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SearchPanel(),
+                                const SizedBox(height: 18),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 18,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      SingleChildScrollView(
-                                        controller: _scrollController,
-                                        physics: const ClampingScrollPhysics(),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.stretch,
-                                          children: [
-                                            const SearchPanel(),
-                                            const SizedBox(height: 18),
-                                            Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 18,
-                                              ),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  const SectionHeader(
-                                                    title:
-                                                        'Mã giảm số lượng có hạn',
-                                                  ),
-                                                  const SizedBox(height: 12),
-                                                  const CouponRow(),
-                                                  const SizedBox(height: 18),
-                                                  const HotelRowSection(),
-                                                  const SizedBox(height: 20),
-                                                  const BrandOfferSection(),
-                                                  const SizedBox(height: 18),
-                                                  const DiscoverBanner(),
-                                                  const SizedBox(height: 24),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                      const SectionHeader(
+                                        title: 'Mã giảm số lượng có hạn',
                                       ),
-                                      if (_showScrollTopButton)
-                                        Positioned(
-                                          bottom: 12,
-                                          left: 0,
-                                          right: 0,
-                                          child: ScrollTopButton(
-                                              onPressed: _scrollToTop),
-                                        ),
+                                      const SizedBox(height: 12),
+                                      const CouponRow(),
+                                      const SizedBox(height: 18),
+                                      const HotelRowSection(),
+                                      const SizedBox(height: 20),
+                                      const BrandOfferSection(),
+                                      const SizedBox(height: 18),
+                                      const DiscoverBanner(),
+                                      const SizedBox(height: 24),
                                     ],
                                   ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_showScrollTopButton)
+                            Positioned(
+                              bottom: 12,
+                              left: 0,
+                              right: 0,
+                              child: ScrollTopButton(onPressed: _scrollToTop),
+                            ),
+                        ],
+                      ),
               ),
               Container(
                 decoration: const BoxDecoration(
@@ -895,6 +887,18 @@ class BookingPage extends StatelessWidget {
               const _BookingSectionHeading(title: 'Bạn đã xem qua'),
               const SizedBox(height: 10),
               const _BookingEmptyState(),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const hotel_booking.TravelHomePage(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.hotel_outlined),
+                label: const Text('Tìm và đặt phòng khách sạn'),
+              ),
               const SizedBox(height: 20),
               _BookingSectionTitle(
                 title: 'Thư viện Coupon',
@@ -1057,10 +1061,7 @@ class _BookingSectionTitle extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: Color(0xFF858E98),
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Color(0xFF858E98), fontSize: 12),
               ),
             ],
           ),
@@ -1153,11 +1154,7 @@ class _CouponPlaceholderCard extends StatelessWidget {
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Divider(
-              height: 1,
-              color: Color(0xFFDCEFFC),
-              thickness: 1.5,
-            ),
+            child: Divider(height: 1, color: Color(0xFFDCEFFC), thickness: 1.5),
           ),
           Padding(
             padding: const EdgeInsets.all(10),
@@ -1548,10 +1545,7 @@ class _SavedArticlesTab extends StatelessWidget {
 }
 
 class _SavedArticleCard extends StatelessWidget {
-  const _SavedArticleCard({
-    required this.article,
-    required this.onRemove,
-  });
+  const _SavedArticleCard({required this.article, required this.onRemove});
 
   final TravelArticle article;
   final VoidCallback onRemove;
@@ -1574,8 +1568,10 @@ class _SavedArticleCard extends StatelessWidget {
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => const ColoredBox(
                   color: Color(0xFFE8F1FF),
-                  child:
-                      Icon(Icons.landscape_outlined, color: Color(0xFF2A6EEB)),
+                  child: Icon(
+                    Icons.landscape_outlined,
+                    color: Color(0xFF2A6EEB),
+                  ),
                 ),
               ),
             ),
@@ -2133,10 +2129,7 @@ class _SearchPanelState extends State<SearchPanel> {
                           ),
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 7),
-                            child: Divider(
-                              height: 1,
-                              color: Color(0xFFE3E5E8),
-                            ),
+                            child: Divider(height: 1, color: Color(0xFFE3E5E8)),
                           ),
                           Row(
                             children: [
@@ -2179,8 +2172,9 @@ class _SearchPanelState extends State<SearchPanel> {
                                 height: 34,
                                 width: 1,
                                 color: const Color(0xFFE3E5E8),
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 8),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
                               ),
                               Expanded(
                                 child: InkWell(
@@ -2441,9 +2435,7 @@ class PromoStrip extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFDA3C74),
         border: Border.all(color: const Color(0xFFE91E63), width: 2),
-        borderRadius: const BorderRadius.vertical(
-          bottom: Radius.circular(16),
-        ),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
       ),
       child: RichText(
         text: const TextSpan(
@@ -2637,8 +2629,9 @@ class _InlinePill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color:
-                isSelected ? const Color(0xFF2A6EEB) : const Color(0xFFF5F5F7),
+            color: isSelected
+                ? const Color(0xFF2A6EEB)
+                : const Color(0xFFF5F5F7),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
