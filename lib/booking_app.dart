@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
+import 'destination_images.dart';
 
 part 'support.dart';
 part 'booking.dart';

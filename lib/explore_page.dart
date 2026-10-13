@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'destination_images.dart';
+
 const _navy = Color(0xFF0E1F38);
 const _blue = Color(0xFF2A6EEB);
 const _paleBlue = Color(0xFFE8F1FF);
@@ -290,15 +292,9 @@ class _TravelArticleCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.network(
-                      article.imageUrl,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, progress) =>
-                          progress == null
-                              ? child
-                              : const _ArticleImageFallback(),
-                      errorBuilder: (context, error, stackTrace) =>
-                          const _ArticleImageFallback(),
+                    DestinationImage(
+                      location: article.location,
+                      networkUrl: article.imageUrl,
                     ),
                     Positioned(
                       left: 8,
@@ -499,11 +495,9 @@ class TravelArticleDetailPage extends StatelessWidget {
             backgroundColor: _navy,
             foregroundColor: Colors.white,
             flexibleSpace: FlexibleSpaceBar(
-              background: Image.network(
-                article.imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    const _ArticleImageFallback(),
+              background: DestinationImage(
+                location: article.location,
+                networkUrl: article.imageUrl,
               ),
             ),
           ),

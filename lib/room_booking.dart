@@ -4,12 +4,14 @@ class RoomBookingPage extends StatefulWidget {
   final String hotelName;
   final HotelSearchSelection selection;
   final String? hotelId;
+  final RoomType? roomType;
 
   const RoomBookingPage({
     super.key,
     required this.hotelName,
     required this.selection,
     this.hotelId,
+    this.roomType,
   });
 
   @override
@@ -17,7 +19,6 @@ class RoomBookingPage extends StatefulWidget {
 }
 
 class _RoomBookingPageState extends State<RoomBookingPage> {
-  static const int _nightlyRate = 1250000;
   static const List<_BookingCoupon> _coupons = [
     _BookingCoupon(
       code: 'TRAVEL10',
@@ -45,6 +46,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   List<String> _availableRoomIds = const [];
 
   int get _nights => widget.selection.dateRange.duration.inDays.clamp(1, 365);
+  int get _nightlyRate => widget.roomType?.basePrice.round() ?? 1250000;
 
   int get _subtotal => _nightlyRate * _nights * widget.selection.roomCount;
 
@@ -917,16 +919,20 @@ class _RoomDetailTag extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: const Color(0xFF0E1F38)),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF394550),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              softWrap: true,
+              style: const TextStyle(
+                color: Color(0xFF394550),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

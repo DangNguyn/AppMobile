@@ -64,6 +64,17 @@ class ApiRepository {
       _items(await client.get('/api/hotels/$hotelId/room-types'))
           .map(RoomType.fromJson)
           .toList();
+  Future<RoomType> roomType(String id) async =>
+      RoomType.fromJson(_data(await client.get('/api/room-types/$id')));
+  Future<List<String>> roomTypeImages(String id) async =>
+      _items(await client.get('/api/room-types/$id/images'))
+          .map((e) => '${e['image_url'] ?? ''}')
+          .where((e) => e.isNotEmpty)
+          .toList();
+  Future<List<HotelAmenity>> hotelAmenities(String hotelId) async =>
+      _items(await client.get('/api/hotels/$hotelId/amenities'))
+          .map(HotelAmenity.fromJson)
+          .toList();
   Future<List<Room>> availableRooms(
           {required String hotelId,
           required String checkIn,

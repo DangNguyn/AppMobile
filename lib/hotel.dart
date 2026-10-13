@@ -487,10 +487,21 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F5F7),
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF19232D),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
         elevation: 0,
         titleSpacing: 0,
+        flexibleSpace: Stack(
+          fit: StackFit.expand,
+          children: [
+            DestinationImage(
+              location: _location,
+              networkUrl:
+                  'https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=1200&q=85',
+            ),
+            ColoredBox(color: Colors.black.withValues(alpha: 0.42)),
+          ],
+        ),
         title: Row(
           children: [
             Expanded(
@@ -511,7 +522,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF68727C),
+                      color: Colors.white70,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -561,6 +572,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                     final hotel = hotels[index];
                     return _HotelResultCard(
                       number: index + 1,
+                      hotelId: hotel.id,
                       name: hotel.name,
                       location: hotel.city.isEmpty ? _location : hotel.city,
                       rating: hotel.starRating ?? 0,
@@ -588,6 +600,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
 
 class _HotelResultCard extends StatelessWidget {
   final int number;
+  final String hotelId;
   final String name;
   final String location;
   final double rating;
@@ -596,6 +609,7 @@ class _HotelResultCard extends StatelessWidget {
 
   const _HotelResultCard({
     required this.number,
+    required this.hotelId,
     required this.name,
     required this.location,
     required this.rating,
@@ -617,25 +631,7 @@ class _HotelResultCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 112,
-                height: 142,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: number.isEven
-                        ? const [Color(0xFFB8D7E8), Color(0xFF557D91)]
-                        : const [Color(0xFFE9D9C2), Color(0xFF9D7856)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.hotel_rounded,
-                  color: Colors.white,
-                  size: 42,
-                ),
-              ),
+              _HotelResultImage(hotelId: hotelId, number: number),
               const SizedBox(width: 14),
               Expanded(
                 child: SizedBox(
@@ -721,6 +717,7 @@ class _HotelResultCard extends StatelessWidget {
       ),
     );
   }
+
 }
 
 class _NearbyPlace {
@@ -735,6 +732,51 @@ class _NearbyPlace {
     required this.category,
     required this.point,
   });
+}
+
+class _HotelResultImage extends StatelessWidget {
+  const _HotelResultImage({required this.hotelId, required this.number});
+
+  final String hotelId;
+  final int number;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<String>>(
+      future: apiRepository.hotelImages(hotelId),
+      builder: (context, snapshot) {
+        final images = snapshot.data ?? const <String>[];
+        final imageUrl = images.isEmpty ? null : images.first;
+        final colors = number.isEven
+            ? const [Color(0xFFB8D7E8), Color(0xFF557D91)]
+            : const [Color(0xFFE9D9C2), Color(0xFF9D7856)];
+        return Container(
+          width: 112,
+          height: 142,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: colors,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: imageUrl == null || imageUrl.isEmpty
+              ? const Icon(Icons.hotel_rounded, color: Colors.white, size: 42)
+              : Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.hotel_rounded,
+                    color: Colors.white,
+                    size: 42,
+                  ),
+                ),
+        );
+      },
+    );
+  }
 }
 
 class _HotelNearbyPlacesMap extends StatefulWidget {

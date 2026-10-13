@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'account_page.dart';
 import 'booking_app.dart' as hotel_booking;
+import 'destination_images.dart';
 import 'explore_page.dart';
 import 'onboarding_widgets.dart';
 import 'user_service.dart';
@@ -2704,6 +2705,7 @@ class HotelRowSection extends StatefulWidget {
 class _HotelRowSectionState extends State<HotelRowSection> {
   int _selectedIndex = -1;
   late Future<List<Hotel>> _hotels;
+  final Map<String, Future<List<String>>> _hotelImageRequests = {};
 
   @override
   void initState() {
@@ -2748,44 +2750,28 @@ class _HotelRowSectionState extends State<HotelRowSection> {
             final hotels = snapshot.data ?? const <Hotel>[];
             if (hotels.isEmpty) return const Text('Chưa có khách sạn.');
             return SizedBox(
-              height: 112,
+              height: 246,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: hotels.length,
                 separatorBuilder: (_, index) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   final hotel = hotels[index];
+                  final imageRequest = _hotelImageRequests.putIfAbsent(
+                    hotel.id,
+                    () => apiRepository.hotelImages(hotel.id),
+                  );
                   return SizedBox(
-                    width: 220,
-                    child: Card(
-                      margin: EdgeInsets.zero,
-                      child: InkWell(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => hotel_booking.HotelDetailPage(
-                              hotelName: hotel.name,
-                              hotelId: hotel.id,
-                              selection: widget.selection,
-                            ),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(hotel.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700)),
-                              const SizedBox(height: 6),
-                              Text('${hotel.city} · ${hotel.address}',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontSize: 12, color: Colors.black54)),
-                            ],
+                    width: 222,
+                    child: _HomeHotelCard(
+                      hotel: hotel,
+                      imageRequest: imageRequest,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => hotel_booking.HotelDetailPage(
+                            hotelName: hotel.name,
+                            hotelId: hotel.id,
+                            selection: widget.selection,
                           ),
                         ),
                       ),
@@ -2853,6 +2839,183 @@ class _InlinePill extends StatelessWidget {
               color: isSelected ? Colors.white : Colors.black87,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeHotelCard extends StatelessWidget {
+  const _HomeHotelCard({
+    required this.hotel,
+    required this.imageRequest,
+    required this.onTap,
+  });
+
+  final Hotel hotel;
+  final Future<List<String>> imageRequest;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final rating = hotel.starRating ?? 0;
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 126,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  FutureBuilder<List<String>>(
+                    future: imageRequest,
+                    builder: (context, snapshot) {
+                      final images = snapshot.data ?? const <String>[];
+                      if (images.isNotEmpty) {
+                        return Image.network(
+                          images.first,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              DestinationImage(
+                            location: hotel.city,
+                            networkUrl:
+                                'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=85',
+                          ),
+                        );
+                      }
+                      return DestinationImage(
+                        location: hotel.city,
+                        networkUrl:
+                            'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=85',
+                      );
+                    },
+                  ),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Color(0x99000000)],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
+                        child: Text(
+                          'Đề xuất',
+                          style: TextStyle(
+                            color: Color(0xFF1674C5),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 10,
+                    bottom: 9,
+                    child: Text(
+                      hotel.city.isEmpty ? 'Việt Nam' : hotel.city,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 9),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hotel.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF17202C),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        height: 1.15,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      hotel.address.isEmpty
+                          ? 'Địa chỉ đang cập nhật'
+                          : hotel.address,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF707984),
+                        fontSize: 11,
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.star_rounded,
+                          color: Color(0xFFFFC928),
+                          size: 17,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          rating > 0 ? rating.toStringAsFixed(1) : 'Mới',
+                          style: const TextStyle(
+                            color: Color(0xFF1688C7),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Spacer(),
+                        const Text(
+                          'Xem phòng',
+                          style: TextStyle(
+                            color: Color(0xFF1674C5),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Color(0xFF1674C5),
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -58,6 +58,24 @@ class Hotel {
       );
 }
 
+class HotelAmenity {
+      const HotelAmenity({
+        required this.id,
+        required this.name,
+        this.description = '',
+      });
+
+      final String id;
+      final String name;
+      final String description;
+
+      factory HotelAmenity.fromJson(Map<String, dynamic> json) => HotelAmenity(
+            id: '${json['id'] ?? ''}',
+            name: '${json['name'] ?? ''}',
+            description: '${json['description'] ?? ''}',
+          );
+}
+
 class RoomType {
   const RoomType({
     required this.id,
