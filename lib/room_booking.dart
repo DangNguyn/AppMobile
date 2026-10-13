@@ -3,11 +3,13 @@ part of 'booking_app.dart';
 class RoomBookingPage extends StatefulWidget {
   final String hotelName;
   final HotelSearchSelection selection;
+  final String? hotelId;
 
   const RoomBookingPage({
     super.key,
     required this.hotelName,
     required this.selection,
+    this.hotelId,
   });
 
   @override
@@ -39,6 +41,8 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   int _step = 0;
   _BookingCoupon? _selectedCoupon;
   String? _selectedPaymentMethod;
+  bool _isSubmitting = false;
+  List<String> _availableRoomIds = const [];
 
   int get _nights => widget.selection.dateRange.duration.inDays.clamp(1, 365);
 
@@ -47,6 +51,71 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   int get _discount => _selectedCoupon?.discountFor(_subtotal) ?? 0;
 
   int get _total => _subtotal - _discount;
+
+  Future<void> _createBooking() async {
+    if (widget.hotelId == null || _availableRoomIds.isEmpty || _isSubmitting) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.hotelId == null
+                ? 'Đã ghi nhận phương thức thanh toán. Đây là bản xem trước.'
+                : 'Chưa xác định được phòng trống từ API.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _isSubmitting = true);
+    try {
+      final booking = await apiRepository.createBooking(
+        hotelId: widget.hotelId!,
+        roomIds: _availableRoomIds.take(widget.selection.roomCount).toList(),
+        checkIn: _dateOnly(widget.selection.dateRange.start),
+        checkOut: _dateOnly(widget.selection.dateRange.end),
+        adults: widget.selection.adultCount,
+        children: widget.selection.childCount,
+        voucherCode: _selectedCoupon?.code,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Đặt phòng đang ở trạng thái ${booking.status}.')),
+      );
+      if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  String _dateOnly(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvailableRooms();
+  }
+
+  Future<void> _loadAvailableRooms() async {
+    if (widget.hotelId == null) return;
+    try {
+      final rooms = await apiRepository.availableRooms(
+        hotelId: widget.hotelId!,
+        checkIn: _dateOnly(widget.selection.dateRange.start),
+        checkOut: _dateOnly(widget.selection.dateRange.end),
+      );
+      if (mounted) {
+        setState(
+            () => _availableRoomIds = rooms.map((room) => room.id).toList());
+      }
+    } on ApiException {
+      // The submit action surfaces the actionable API error; no mutation is retried.
+    }
+  }
 
   @override
   void dispose() {
@@ -261,8 +330,8 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                           icon: Icons.person_outline_rounded,
                           validator: (value) =>
                               value == null || value.trim().isEmpty
-                              ? 'Vui lòng nhập họ và tên'
-                              : null,
+                                  ? 'Vui lòng nhập họ và tên'
+                                  : null,
                         ),
                         const SizedBox(height: 12),
                         _bookingTextField(
@@ -422,16 +491,10 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
               onPressed: _step == 0
                   ? _continueToPayment
                   : _selectedPaymentMethod == null
-                  ? null
-                  : () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Đã ghi nhận phương thức thanh toán. Đây là bản xem trước.',
-                          ),
-                        ),
-                      );
-                    },
+                      ? null
+                      : () {
+                          _createBooking();
+                        },
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF0E1F38),
                 foregroundColor: Colors.white,
@@ -443,8 +506,8 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                 _step == 0
                     ? 'Tiếp tục'
                     : _selectedPaymentMethod == null
-                    ? 'Chọn phương thức thanh toán'
-                    : 'Thanh toán ${_formatVnd(_total)}',
+                        ? 'Chọn phương thức thanh toán'
+                        : 'Thanh toán ${_formatVnd(_total)}',
                 textAlign: TextAlign.center,
               ),
             ),
@@ -1070,9 +1133,8 @@ class _InlinePill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFF0E1F38)
-                : const Color(0xFFF5F5F7),
+            color:
+                isSelected ? const Color(0xFF0E1F38) : const Color(0xFFF5F5F7),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(

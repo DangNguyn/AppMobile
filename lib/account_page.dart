@@ -396,11 +396,6 @@ class _SavedAccountDataCard extends StatelessWidget {
             value: info.birthDate,
           ),
           _SavedDataTile(
-            icon: Icons.wc_outlined,
-            title: 'Giới tính',
-            value: info.gender,
-          ),
-          _SavedDataTile(
             icon: Icons.alternate_email_rounded,
             title: 'Email',
             value: data.email,
@@ -1359,7 +1354,6 @@ class _EditAccountProfilePageState extends State<EditAccountProfilePage> {
   late final TextEditingController _emailController;
   late final TextEditingController _mobileController;
   late String _dateOfBirth;
-  late String _gender;
 
   @override
   void initState() {
@@ -1372,7 +1366,6 @@ class _EditAccountProfilePageState extends State<EditAccountProfilePage> {
     _emailController = TextEditingController(text: profile.email);
     _mobileController = TextEditingController(text: profile.mobile);
     _dateOfBirth = profile.dateOfBirth;
-    _gender = profile.gender;
   }
 
   @override
@@ -1419,7 +1412,6 @@ class _EditAccountProfilePageState extends State<EditAccountProfilePage> {
         username: _usernameController.text.trim(),
         bio: _bioController.text.trim(),
         dateOfBirth: _dateOfBirth,
-        gender: _gender,
         city: _cityController.text.trim(),
         email: _emailController.text.trim(),
         mobile: _mobileController.text.trim(),
@@ -1585,65 +1577,20 @@ class _EditAccountProfilePageState extends State<EditAccountProfilePage> {
                         : null,
                   ),
                   const SizedBox(height: 14),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _fieldLabel('Ngày sinh'),
-                            InkWell(
-                              key: const ValueKey('profile_birth_date_field'),
-                              onTap: _pickDate,
-                              borderRadius: BorderRadius.circular(12),
-                              child: InputDecorator(
-                                decoration: _fieldDecoration(
-                                  suffixIcon: const Icon(
-                                    Icons.calendar_month_outlined,
-                                    size: 20,
-                                  ),
-                                ),
-                                child: Text(_displayDate(_dateOfBirth)),
-                              ),
-                            ),
-                          ],
+                  _fieldLabel('Ngày sinh'),
+                  InkWell(
+                    key: const ValueKey('profile_birth_date_field'),
+                    onTap: _pickDate,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InputDecorator(
+                      decoration: _fieldDecoration(
+                        suffixIcon: const Icon(
+                          Icons.calendar_month_outlined,
+                          size: 20,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _fieldLabel('Giới tính'),
-                            DropdownButtonFormField<String>(
-                              key: const ValueKey('profile_gender_field'),
-                              initialValue: _gender,
-                              decoration: _fieldDecoration(),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'Nam',
-                                  child: Text('Nam'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'Nữ',
-                                  child: Text('Nữ'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'Khác',
-                                  child: Text('Khác'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _gender = value);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                      child: Text(_displayDate(_dateOfBirth)),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   _fieldLabel('Thành phố cư trú'),

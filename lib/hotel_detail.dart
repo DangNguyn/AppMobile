@@ -3,11 +3,13 @@ part of 'booking_app.dart';
 class HotelDetailPage extends StatefulWidget {
   final HotelSearchSelection selection;
   final String hotelName;
+  final String? hotelId;
 
   const HotelDetailPage({
     super.key,
     required this.selection,
     this.hotelName = 'Tên khách sạn',
+    this.hotelId,
   });
 
   @override
@@ -214,6 +216,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             builder: (_) => RoomDetailPage(
               hotelName: widget.hotelName,
               selection: widget.selection,
+              hotelId: widget.hotelId,
             ),
           ),
         ),

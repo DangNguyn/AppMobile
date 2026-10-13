@@ -2,12 +2,14 @@ part of 'booking_app.dart';
 
 class RoomDetailPage extends StatefulWidget {
   final String hotelName;
+  final String? hotelId;
   final HotelSearchSelection selection;
 
   const RoomDetailPage({
     super.key,
     required this.hotelName,
     required this.selection,
+    this.hotelId,
   });
 
   @override
@@ -417,6 +419,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                     builder: (_) => RoomBookingPage(
                       hotelName: widget.hotelName,
                       selection: widget.selection,
+                      hotelId: widget.hotelId,
                     ),
                   ),
                 ),

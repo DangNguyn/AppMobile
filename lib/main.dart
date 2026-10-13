@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,6 +9,8 @@ import 'explore_page.dart';
 import 'onboarding_widgets.dart';
 import 'user_service.dart';
 import 'welcome_screen.dart';
+import 'api/api_repository.dart';
+import 'api/models.dart';
 
 void main() {
   runApp(const MyApp());
@@ -96,6 +100,7 @@ class _TravelHomePageState extends State<TravelHomePage> {
   }
 
   Future<void> _restartOnboardingAfterLogout() async {
+    unawaited(apiRepository.client.clearToken());
     await userService.clearCustomerData();
     if (!mounted) return;
     _savedArticleTitles.clear();
@@ -186,67 +191,74 @@ class _TravelHomePageState extends State<TravelHomePage> {
                         onToggleSaved: _toggleSavedArticle,
                       )
                     : _selectedNavIndex == 2
-                    ? const BookingPage()
-                    : _selectedNavIndex == 3
-                    ? SavedPage(
-                        savedArticles: allTravelArticles
-                            .where(
-                              (article) =>
-                                  _savedArticleTitles.contains(article.title),
-                            )
-                            .toList(),
-                        onRemoveArticle: _toggleSavedArticle,
-                      )
-                    : _selectedNavIndex == 4
-                    ? AccountScreen(onLogout: _restartOnboardingAfterLogout)
-                    : Stack(
-                        children: [
-                          SingleChildScrollView(
-                            controller: _scrollController,
-                            physics: const ClampingScrollPhysics(),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SearchPanel(
-                                  selection: _hotelSearchSelection,
-                                  onSearch: _openHotelSearchResults,
-                                ),
-                                const SizedBox(height: 18),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                        ? const BookingPage()
+                        : _selectedNavIndex == 3
+                            ? SavedPage(
+                                savedArticles: allTravelArticles
+                                    .where(
+                                      (article) => _savedArticleTitles
+                                          .contains(article.title),
+                                    )
+                                    .toList(),
+                                onRemoveArticle: _toggleSavedArticle,
+                              )
+                            : _selectedNavIndex == 4
+                                ? AccountScreen(
+                                    onLogout: _restartOnboardingAfterLogout)
+                                : Stack(
                                     children: [
-                                      const SectionHeader(
-                                        title: 'Mã giảm số lượng có hạn',
+                                      SingleChildScrollView(
+                                        controller: _scrollController,
+                                        physics: const ClampingScrollPhysics(),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            SearchPanel(
+                                              selection: _hotelSearchSelection,
+                                              onSearch: _openHotelSearchResults,
+                                            ),
+                                            const SizedBox(height: 18),
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 18,
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  const SectionHeader(
+                                                    title:
+                                                        'Mã giảm số lượng có hạn',
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  const CouponRow(),
+                                                  const SizedBox(height: 18),
+                                                  HotelRowSection(
+                                                      selection:
+                                                          _hotelSearchSelection),
+                                                  const SizedBox(height: 20),
+                                                  const BrandOfferSection(),
+                                                  const SizedBox(height: 18),
+                                                  const DiscoverBanner(),
+                                                  const SizedBox(height: 24),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                      const SizedBox(height: 12),
-                                      const CouponRow(),
-                                      const SizedBox(height: 18),
-                                      const HotelRowSection(),
-                                      const SizedBox(height: 20),
-                                      const BrandOfferSection(),
-                                      const SizedBox(height: 18),
-                                      const DiscoverBanner(),
-                                      const SizedBox(height: 24),
+                                      if (_showScrollTopButton)
+                                        Positioned(
+                                          bottom: 12,
+                                          left: 0,
+                                          right: 0,
+                                          child: ScrollTopButton(
+                                              onPressed: _scrollToTop),
+                                        ),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (_showScrollTopButton)
-                            Positioned(
-                              bottom: 12,
-                              left: 0,
-                              right: 0,
-                              child: ScrollTopButton(onPressed: _scrollToTop),
-                            ),
-                        ],
-                      ),
               ),
               Container(
                 decoration: const BoxDecoration(
@@ -1478,14 +1490,7 @@ class SavedPage extends StatelessWidget {
                     articles: savedArticles,
                     onRemoveArticle: onRemoveArticle,
                   ),
-                  ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 24),
-                    children: const [
-                      _SavedProductsCard(),
-                      SizedBox(height: 18),
-                      _SavedCollectionsCard(),
-                    ],
-                  ),
+                  const _SavedHotelsTab(),
                 ],
               ),
             ),
@@ -1494,6 +1499,76 @@ class SavedPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SavedHotelsTab extends StatefulWidget {
+  const _SavedHotelsTab();
+
+  @override
+  State<_SavedHotelsTab> createState() => _SavedHotelsTabState();
+}
+
+class _SavedHotelsTabState extends State<_SavedHotelsTab> {
+  late Future<List<FavoriteHotel>> _favorites;
+
+  @override
+  void initState() {
+    super.initState();
+    _favorites = apiRepository.favorites();
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<FavoriteHotel>>(
+        future: _favorites,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 24),
+              children: const [
+                _SavedProductsCard(),
+                SizedBox(height: 18),
+                _SavedCollectionsCard(),
+              ],
+            );
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: TextButton(
+                onPressed: () =>
+                    setState(() => _favorites = apiRepository.favorites()),
+                child: Text('${snapshot.error}\nThử lại',
+                    textAlign: TextAlign.center),
+              ),
+            );
+          }
+          final favorites = snapshot.data ?? const <FavoriteHotel>[];
+          if (favorites.isEmpty) {
+            return const Center(child: Text('Chưa có khách sạn yêu thích.'));
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 24),
+            itemCount: favorites.length,
+            separatorBuilder: (_, index) => const SizedBox(height: 10),
+            itemBuilder: (context, index) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.favorite, color: Color(0xFFE05A45)),
+                title: Text(favorites[index].name),
+                subtitle: Text(
+                    '${favorites[index].city} ${favorites[index].address}'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () async {
+                    await apiRepository.removeFavorite(favorites[index].id);
+                    if (mounted) {
+                      setState(() => _favorites = apiRepository.favorites());
+                    }
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      );
 }
 
 class _SavedArticlesTab extends StatelessWidget {
@@ -2618,7 +2693,9 @@ class _TagChip extends StatelessWidget {
 }
 
 class HotelRowSection extends StatefulWidget {
-  const HotelRowSection({super.key});
+  const HotelRowSection({super.key, required this.selection});
+
+  final hotel_booking.HotelSearchSelection selection;
 
   @override
   State<HotelRowSection> createState() => _HotelRowSectionState();
@@ -2626,6 +2703,13 @@ class HotelRowSection extends StatefulWidget {
 
 class _HotelRowSectionState extends State<HotelRowSection> {
   int _selectedIndex = -1;
+  late Future<List<Hotel>> _hotels;
+
+  @override
+  void initState() {
+    super.initState();
+    _hotels = apiRepository.hotels();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2641,6 +2725,76 @@ class _HotelRowSectionState extends State<HotelRowSection> {
             fontWeight: FontWeight.w800,
             color: Colors.black,
           ),
+        ),
+        const SizedBox(height: 16),
+        FutureBuilder<List<Hotel>>(
+          future: _hotels,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(height: 112);
+            }
+            if (snapshot.hasError) {
+              return Row(
+                children: [
+                  Expanded(child: Text('${snapshot.error}')),
+                  TextButton(
+                    onPressed: () =>
+                        setState(() => _hotels = apiRepository.hotels()),
+                    child: const Text('Thử lại'),
+                  ),
+                ],
+              );
+            }
+            final hotels = snapshot.data ?? const <Hotel>[];
+            if (hotels.isEmpty) return const Text('Chưa có khách sạn.');
+            return SizedBox(
+              height: 112,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: hotels.length,
+                separatorBuilder: (_, index) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final hotel = hotels[index];
+                  return SizedBox(
+                    width: 220,
+                    child: Card(
+                      margin: EdgeInsets.zero,
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => hotel_booking.HotelDetailPage(
+                              hotelName: hotel.name,
+                              hotelId: hotel.id,
+                              selection: widget.selection,
+                            ),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(hotel.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 6),
+                              Text('${hotel.city} · ${hotel.address}',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Colors.black54)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -2687,9 +2841,8 @@ class _InlinePill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFF2A6EEB)
-                : const Color(0xFFF5F5F7),
+            color:
+                isSelected ? const Color(0xFF2A6EEB) : const Color(0xFFF5F5F7),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
