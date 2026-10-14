@@ -73,8 +73,99 @@ class _DiscountIconButtonState extends State<DiscountIconButton> {
   }
 }
 
-class DiscountPage extends StatelessWidget {
+class DiscountPage extends StatefulWidget {
   const DiscountPage({super.key});
+
+  @override
+  State<DiscountPage> createState() => _DiscountPageState();
+}
+
+class _DiscountPageState extends State<DiscountPage> {
+  late Future<List<Voucher>> _vouchers;
+  late Future<List<Hotel>> _hotels;
+  final _codeController = TextEditingController();
+  final _hotelSelection = HotelSearchSelection();
+  final Map<String, Future<List<String>>> _hotelImageRequests = {};
+  String _filter = 'all';
+  Set<String> _savedCodes = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _vouchers = apiRepository.vouchers();
+    _hotels = _loadRecommendedHotels();
+    _loadSavedCodes();
+  }
+
+  Future<List<Hotel>> _loadRecommendedHotels() async {
+    try {
+      final hotels = await apiRepository.hotels();
+      if (hotels.isNotEmpty) return hotels.take(6).toList();
+    } on ApiException {
+      return const [];
+    }
+    return const [];
+  }
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    _hotelSelection.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadSavedCodes() async {
+    final codes = await voucherStorageService.getSavedVoucherCodes();
+    if (mounted) setState(() => _savedCodes = codes.toSet());
+  }
+
+  Future<void> _saveVoucher(String code) async {
+    await voucherStorageService.saveVoucher(code);
+    if (!mounted) return;
+    setState(() => _savedCodes = {..._savedCodes, code.toUpperCase()});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Đã lưu mã vào ví của bạn')),
+    );
+  }
+
+  Future<void> _applyManualCode() async {
+    final code = _codeController.text.trim();
+    if (code.isEmpty) return;
+    try {
+      final voucher = await apiRepository.voucher(code);
+      if (!mounted) return;
+      await _saveVoucher(voucher.code);
+      if (!mounted) return;
+      _codeController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã lưu mã ${voucher.code} vào ví của bạn')),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
+  }
+
+  List<Voucher> _filtered(List<Voucher> vouchers) {
+    return vouchers.where((voucher) {
+      if (_filter == 'saved') {
+        return _savedCodes.contains(voucher.code.toUpperCase());
+      }
+      if (_filter == 'percent') return voucher.discountType == 'percent';
+      if (_filter == 'fixed') return voucher.discountType != 'percent';
+      return true;
+    }).toList();
+  }
+
+  String _formatVnd(double value) =>
+      '${value.round().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}đ';
+
+  String _formatDate(DateTime? value) {
+    if (value == null) return 'Không xác định';
+    return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,18 +183,507 @@ class DiscountPage extends StatelessWidget {
           title: const Text('Mã giảm giá'),
           elevation: 0,
         ),
-        body: ListView(
-          padding: const EdgeInsets.all(18),
+        body: FutureBuilder<List<Voucher>>(
+          future: _vouchers,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Text('Không thể tải kho mã: ${snapshot.error}'),
+              );
+            }
+            final vouchers = _filtered(snapshot.data ?? const []);
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _codeController,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: InputDecoration(
+                          hintText: 'Nhập mã voucher',
+                          prefixIcon:
+                              const Icon(Icons.confirmation_number_outlined),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _applyManualCode,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF2A6EEB),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                      ),
+                      child: const Text('Áp dụng'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _filterChip('Tất cả', 'all'),
+                      _filterChip('Đã lưu', 'saved'),
+                      _filterChip('Giảm theo %', 'percent'),
+                      _filterChip('Giảm tiền mặt', 'fixed'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (vouchers.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(child: Text('Chưa có mã giảm giá phù hợp.')),
+                  )
+                else ...[
+                  const Text(
+                    'Mã ưu đãi dành cho bạn',
+                    style: TextStyle(
+                      color: Color(0xFF0E1F38),
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 188,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: vouchers.length,
+                      separatorBuilder: (_, index) => const SizedBox(width: 12),
+                      itemBuilder: (context, index) =>
+                          _voucherCard(vouchers[index])
+                              .animate()
+                              .fadeIn(
+                                delay: Duration(milliseconds: index * 70),
+                                duration: 450.ms,
+                              )
+                              .slideX(begin: 0.12),
+                    ),
+                  ),
+                  const SizedBox(height: 26),
+                  _buildDiscoverSection(),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: _filter == value,
+        onSelected: (_) => setState(() => _filter = value),
+        selectedColor: const Color(0xFFDFEBFF),
+        labelStyle: TextStyle(
+          color: _filter == value
+              ? const Color(0xFF2A6EEB)
+              : const Color(0xFF4B5563),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _voucherCard(Voucher voucher) {
+    final saved = _savedCodes.contains(voucher.code.toUpperCase());
+    final isPercent = voucher.discountType == 'percent';
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      color: Colors.white,
+      shadowColor: const Color(0x220E1F38),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      child: SizedBox(
+        width: 326,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 64,
+                height: double.infinity,
+                constraints: const BoxConstraints(minHeight: 150),
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF2A6EEB), Color(0xFF62B4F8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(
+                      Icons.confirmation_number_rounded,
+                      color: Colors.white,
+                      size: 38,
+                    ),
+                    Positioned(
+                      bottom: 14,
+                      child: Text(
+                        isPercent ? '%' : '₫',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      voucher.code,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF0E1F38),
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      isPercent
+                          ? 'Giảm ${voucher.discountValue.round()}%'
+                          : 'Giảm ${_formatVnd(voucher.discountValue)}',
+                      style: const TextStyle(
+                        color: Color(0xFF1688C7),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Tối thiểu ${_formatVnd(voucher.minOrder)}',
+                      style: const TextStyle(
+                        color: Color(0xFF667085),
+                        fontSize: 11,
+                      ),
+                    ),
+                    Text(
+                      'HSD ${_formatDate(voucher.endDate)}',
+                      style: const TextStyle(
+                        color: Color(0xFF667085),
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 32,
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            saved ? null : () => _saveVoucher(voucher.code),
+                        icon: Icon(saved ? Icons.check : Icons.add, size: 16),
+                        label: Text(saved ? 'Đã lưu' : 'Lưu mã'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF2A6EEB),
+                          disabledForegroundColor: const Color(0xFF2E9B63),
+                          side: const BorderSide(color: Color(0xFF2A6EEB)),
+                          padding: const EdgeInsets.symmetric(horizontal: 9),
+                          textStyle: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDiscoverSection() {
+    return FutureBuilder<List<Hotel>>(
+      future: _hotels,
+      builder: (context, snapshot) {
+        final hotels = snapshot.data ?? const <Hotel>[];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              height: 160,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFDDE2E7)),
-                borderRadius: BorderRadius.circular(16),
+            const Text(
+              'Khám phá Việt Nam',
+              style: TextStyle(
+                color: Color(0xFF0E1F38),
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
               ),
             ),
+            const SizedBox(height: 4),
+            const Text(
+              'Những điểm lưu trú nổi bật cho hành trình tiếp theo',
+              style: TextStyle(color: Color(0xFF667085)),
+            ),
+            const SizedBox(height: 14),
+            if (snapshot.connectionState == ConnectionState.waiting)
+              const SizedBox(
+                height: 230,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              hotels.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 28),
+                      child: Text(
+                        'Chưa tải được danh sách khách sạn đề xuất.',
+                        style: TextStyle(color: Color(0xFF667085)),
+                      ),
+                    )
+                  : SizedBox(
+                      height: 270,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: hotels.length,
+                        separatorBuilder: (_, index) =>
+                            const SizedBox(width: 12),
+                        itemBuilder: (context, index) {
+                          final hotel = hotels[index];
+                          final imageRequest = _hotelImageRequests.putIfAbsent(
+                            hotel.id,
+                            () => apiRepository.hotelImages(hotel.id),
+                          );
+                          return _hotelCard(hotel, imageRequest)
+                              .animate()
+                              .fadeIn(
+                                delay: Duration(milliseconds: 150 + index * 80),
+                                duration: 500.ms,
+                              )
+                              .slideY(begin: 0.1);
+                        },
+                      ),
+                    ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _hotelCard(Hotel hotel, Future<List<String>> imageRequest) {
+    void openHotel() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => HotelDetailPage(
+            hotelName: hotel.name,
+            hotelId: hotel.id,
+            selection: _hotelSelection,
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: openHotel,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 245,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x180E1F38),
+                blurRadius: 12,
+                offset: Offset(0, 5),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 132,
+                width: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    FutureBuilder<List<String>>(
+                      future: imageRequest,
+                      builder: (context, snapshot) {
+                        final images = snapshot.data ?? const <String>[];
+                        if (images.isNotEmpty) {
+                          return Image.network(
+                            images.first,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _hotelImageFallback(hotel),
+                          );
+                        }
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const ColoredBox(
+                            color: Color(0xFFE8EEF8),
+                            child: Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        }
+                        return _hotelImageFallback(hotel);
+                      },
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.18),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          child: Text(
+                            'Đề xuất',
+                            style: TextStyle(
+                              color: Color(0xFF1688C7),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hotel.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF17202C),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hotel.city.isEmpty ? hotel.address : hotel.city,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF7A838C),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.star_rounded,
+                          color: Color(0xFFFFC928),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          (hotel.starRating ?? 5).toStringAsFixed(1),
+                          style: const TextStyle(
+                            color: Color(0xFF1688C7),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => HotelDetailPage(
+                                hotelName: hotel.name,
+                                hotelId: hotel.id,
+                                selection: _hotelSelection,
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(
+                            Icons.arrow_forward_rounded,
+                            color: Color(0xFF2A6EEB),
+                            size: 18,
+                          ),
+                          label: const Text('Xem phòng'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF2A6EEB),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _hotelImageFallback(Hotel hotel) {
+    return const ColoredBox(
+      color: Color(0xFFE8EEF8),
+      child: Center(
+        child: Icon(
+          Icons.hotel_rounded,
+          color: Color(0xFF2A6EEB),
+          size: 48,
         ),
       ),
     );

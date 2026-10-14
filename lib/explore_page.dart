@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:lottie/lottie.dart';
 
 import 'destination_images.dart';
 
@@ -119,7 +121,7 @@ class _ExplorePageState extends State<ExplorePage> {
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                 ),
-              ),
+              ).animate().fadeIn(duration: 450.ms).slideY(begin: -0.15),
               const SizedBox(height: 4),
               Text(
                 'Cảm hứng cho chuyến đi tiếp theo của bạn',
@@ -142,7 +144,7 @@ class _ExplorePageState extends State<ExplorePage> {
                         prefixIcon: const Icon(
                           Icons.search,
                           color: Color(0xFF6E7783),
-                        ),
+                        ).animate().fadeIn(delay: 100.ms, duration: 450.ms).slideY(begin: 0.12),
                         suffixIcon: _searchQuery.isEmpty
                             ? null
                             : IconButton(
@@ -247,7 +249,7 @@ class _ExplorePageState extends State<ExplorePage> {
                         ),
                       ),
                     ),
-                  ),
+                  ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08),
                 ),
             ],
           ),
@@ -461,7 +463,19 @@ class _EmptySearchResult extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 56),
       child: Column(
         children: [
-          const Icon(Icons.travel_explore, color: _blue, size: 44),
+          SizedBox(
+            width: 130,
+            height: 110,
+            child: Lottie.network(
+              'https://assets10.lottiefiles.com/packages/lf20_kcsr5tqv.json',
+              repeat: true,
+              errorBuilder: (context, error, stackTrace) => const Icon(
+                Icons.travel_explore,
+                color: _blue,
+                size: 44,
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
           const Text(
             'Chưa tìm thấy bài viết phù hợp',

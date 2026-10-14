@@ -545,7 +545,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
               future: _hotels,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const _HotelSearchSkeleton();
                 }
                 if (snapshot.hasError) {
                   return ListView(
@@ -561,7 +561,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                 }
                 final hotels = snapshot.data ?? const <Hotel>[];
                 if (hotels.isEmpty) {
-                  return const Center(child: Text('Chưa có khách sạn.'));
+                  return const _HotelSearchEmptyState();
                 }
                 return ListView.separated(
                   padding: const EdgeInsets.all(12),
@@ -593,6 +593,118 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HotelSearchSkeleton extends StatelessWidget {
+  const _HotelSearchSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: 4,
+      separatorBuilder: (context, index) => const SizedBox(height: 12),
+      itemBuilder: (context, index) => Shimmer.fromColors(
+        baseColor: const Color(0xFFE5EAF0),
+        highlightColor: Colors.white,
+        child: Container(
+          height: 166,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 112,
+                height: 142,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SkeletonLine(width: double.infinity, height: 18),
+                    const SizedBox(height: 10),
+                    _SkeletonLine(width: 120, height: 14),
+                    const SizedBox(height: 14),
+                    _SkeletonLine(width: 90, height: 14),
+                    const Spacer(),
+                    _SkeletonLine(width: 150, height: 14),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonLine extends StatelessWidget {
+  const _SkeletonLine({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+}
+
+class _HotelSearchEmptyState extends StatelessWidget {
+  const _HotelSearchEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 180,
+              height: 150,
+              child: Lottie.network(
+                'https://assets10.lottiefiles.com/packages/lf20_qp1q7mct.json',
+                repeat: true,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.hotel_outlined,
+                  size: 64,
+                  color: Color(0xFF2A6EEB),
+                ),
+              ),
+            ),
+            const Text(
+              'Chưa có khách sạn phù hợp',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Thử đổi điểm đến hoặc thời gian lưu trú nhé.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54),
+            ),
+          ],
+        ),
       ),
     );
   }

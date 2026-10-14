@@ -468,24 +468,3 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
     );
   }
 }
-
-class _BookingCoupon {
-  final String code;
-  final String title;
-  final String description;
-  final int? percentOff;
-  final int? amountOff;
-
-  const _BookingCoupon({
-    required this.code,
-    required this.title,
-    required this.description,
-    this.percentOff,
-    this.amountOff,
-  });
-
-  int discountFor(int subtotal) {
-    final discount = amountOff ?? subtotal * (percentOff ?? 0) ~/ 100;
-    return discount.clamp(0, subtotal);
-  }
-}

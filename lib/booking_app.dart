@@ -5,14 +5,18 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import 'package:lottie/lottie.dart' hide Marker;
+import 'package:shimmer/shimmer.dart';
 
 import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
 import 'destination_images.dart';
+import 'voucher_storage_service.dart';
 
 part 'support.dart';
 part 'booking.dart';
@@ -183,59 +187,61 @@ class _TravelHomePageState extends State<TravelHomePage> {
                 child: _selectedNavIndex == 2
                     ? const BookingPage()
                     : _selectedNavIndex == 3
-                    ? const SavedPage()
-                    : Stack(
-                        children: [
-                          SingleChildScrollView(
-                            controller: _scrollController,
-                            physics: const ClampingScrollPhysics(),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SearchPanel(
-                                  selection: _hotelSearchSelection,
-                                  onSearch: _openHotelSearchResults,
-                                ),
-                                const SizedBox(height: 18),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const PromoStrip(),
-                                      const SizedBox(height: 20),
-                                      const SectionHeader(
-                                        title: 'Mã giảm số lượng có hạn',
+                        ? const SavedPage()
+                        : Stack(
+                            children: [
+                              SingleChildScrollView(
+                                controller: _scrollController,
+                                physics: const ClampingScrollPhysics(),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    SearchPanel(
+                                      selection: _hotelSearchSelection,
+                                      onSearch: _openHotelSearchResults,
+                                    ),
+                                    const SizedBox(height: 18),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 18,
                                       ),
-                                      const SizedBox(height: 12),
-                                      const CouponRow(),
-                                      const SizedBox(height: 18),
-                                      HotelRowSection(
-                                        selection: _hotelSearchSelection,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const PromoStrip(),
+                                          const SizedBox(height: 20),
+                                          const SectionHeader(
+                                            title: 'Mã giảm số lượng có hạn',
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const CouponRow(),
+                                          const SizedBox(height: 18),
+                                          HotelRowSection(
+                                            selection: _hotelSearchSelection,
+                                          ),
+                                          const SizedBox(height: 20),
+                                          const BrandOfferSection(),
+                                          const SizedBox(height: 18),
+                                          const DiscoverBanner(),
+                                          const SizedBox(height: 24),
+                                        ],
                                       ),
-                                      const SizedBox(height: 20),
-                                      const BrandOfferSection(),
-                                      const SizedBox(height: 18),
-                                      const DiscoverBanner(),
-                                      const SizedBox(height: 24),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                              if (_showScrollTopButton)
+                                Positioned(
+                                  bottom: 12,
+                                  left: 0,
+                                  right: 0,
+                                  child:
+                                      ScrollTopButton(onPressed: _scrollToTop),
+                                ),
+                            ],
                           ),
-                          if (_showScrollTopButton)
-                            Positioned(
-                              bottom: 12,
-                              left: 0,
-                              right: 0,
-                              child: ScrollTopButton(onPressed: _scrollToTop),
-                            ),
-                        ],
-                      ),
               ),
               Container(
                 decoration: const BoxDecoration(

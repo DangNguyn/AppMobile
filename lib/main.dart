@@ -12,6 +12,7 @@ import 'user_service.dart';
 import 'welcome_screen.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
+import 'voucher_storage_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -192,7 +193,17 @@ class _TravelHomePageState extends State<TravelHomePage> {
                         onToggleSaved: _toggleSavedArticle,
                       )
                     : _selectedNavIndex == 2
-                        ? const BookingPage()
+                        ? BookingPage(
+                            onFindHotel: () {
+                              setState(() {
+                                _selectedNavIndex = 0;
+                                _showScrollTopButton = false;
+                              });
+                              if (_scrollController.hasClients) {
+                                _scrollController.jumpTo(0);
+                              }
+                            },
+                          )
                         : _selectedNavIndex == 3
                             ? SavedPage(
                                 savedArticles: allTravelArticles
@@ -202,6 +213,13 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                     )
                                     .toList(),
                                 onRemoveArticle: _toggleSavedArticle,
+                                onOpenArticle: (article) =>
+                                    Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => TravelArticleDetailPage(
+                                        article: article),
+                                  ),
+                                ),
                               )
                             : _selectedNavIndex == 4
                                 ? AccountScreen(
@@ -423,35 +441,7 @@ class DiscountPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Color(0xFF0E1F38),
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF7F8FA),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF0E1F38),
-          foregroundColor: Colors.white,
-          title: const Text('Mã giảm giá'),
-          elevation: 0,
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(18),
-          children: [
-            Container(
-              height: 160,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFDDE2E7)),
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return const hotel_booking.DiscountPage();
   }
 }
 
@@ -792,7 +782,9 @@ class _CustomerSupportPageState extends State<CustomerSupportPage> {
 }
 
 class BookingPage extends StatelessWidget {
-  const BookingPage({super.key});
+  const BookingPage({super.key, required this.onFindHotel});
+
+  final VoidCallback onFindHotel;
 
   @override
   Widget build(BuildContext context) {
@@ -919,13 +911,7 @@ class BookingPage extends StatelessWidget {
               const _BookingEmptyState(),
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const hotel_booking.TravelHomePage(),
-                    ),
-                  );
-                },
+                onPressed: onFindHotel,
                 icon: const Icon(Icons.hotel_outlined),
                 label: const Text('Tìm và đặt phòng khách sạn'),
               ),
@@ -936,7 +922,7 @@ class BookingPage extends StatelessWidget {
                 icon: Icons.local_offer_outlined,
               ),
               const SizedBox(height: 10),
-              const _CouponPlaceholderCarousel(),
+              const _SavedVoucherCarousel(),
               const SizedBox(height: 20),
               _BookingSectionTitle(
                 title: 'Đề xuất tuyệt vời',
@@ -944,7 +930,7 @@ class BookingPage extends StatelessWidget {
                 icon: Icons.local_fire_department_rounded,
               ),
               const SizedBox(height: 10),
-              const _RecommendationPlaceholderCarousel(),
+              const _RecommendationHotelCarousel(),
               const SizedBox(height: 22),
               const _BookingSectionHeading(
                 title: 'Tất cả giao dịch và hoạt động khác',
@@ -1106,30 +1092,82 @@ class _BookingSectionTitle extends StatelessWidget {
   }
 }
 
-class _CouponPlaceholderCarousel extends StatelessWidget {
-  const _CouponPlaceholderCarousel();
+class _SavedVoucherCarousel extends StatefulWidget {
+  const _SavedVoucherCarousel();
+
+  @override
+  State<_SavedVoucherCarousel> createState() => _SavedVoucherCarouselState();
+}
+
+class _SavedVoucherCarouselState extends State<_SavedVoucherCarousel> {
+  late Future<List<Voucher>> _vouchers;
+
+  @override
+  void initState() {
+    super.initState();
+    _vouchers = _loadSavedVouchers();
+  }
+
+  Future<List<Voucher>> _loadSavedVouchers() async {
+    final savedCodes = (await voucherStorageService.getSavedVoucherCodes())
+        .map((code) => code.toUpperCase())
+        .toSet();
+    if (savedCodes.isEmpty) return const [];
+    final vouchers = await apiRepository.vouchers();
+    return vouchers
+        .where((voucher) => savedCodes.contains(voucher.code.toUpperCase()))
+        .toList();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 166,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: 3,
-        separatorBuilder: (context, index) => const SizedBox(width: 12),
-        itemBuilder: (context, index) => const _CouponPlaceholderCard(),
-      ),
+    return FutureBuilder<List<Voucher>>(
+      future: _vouchers,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 166,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+        if (snapshot.hasError) {
+          return _SavedSectionMessage(
+            message: 'Không thể tải mã đã lưu.',
+            onRetry: () => setState(() => _vouchers = _loadSavedVouchers()),
+          );
+        }
+        final vouchers = snapshot.data ?? const <Voucher>[];
+        if (vouchers.isEmpty) {
+          return const _SavedSectionMessage(
+            message: 'Mã voucher bạn lưu sẽ xuất hiện tại đây.',
+          );
+        }
+        return SizedBox(
+          height: 166,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: vouchers.length,
+            separatorBuilder: (_, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) =>
+                _SavedVoucherCard(voucher: vouchers[index]),
+          ),
+        );
+      },
     );
   }
 }
 
-class _CouponPlaceholderCard extends StatelessWidget {
-  const _CouponPlaceholderCard();
+class _SavedVoucherCard extends StatelessWidget {
+  const _SavedVoucherCard({required this.voucher});
+
+  final Voucher voucher;
 
   @override
   Widget build(BuildContext context) {
+    final isPercent = voucher.discountType == 'percent';
     return Container(
       width: 280,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -1144,8 +1182,7 @@ class _CouponPlaceholderCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+          Expanded(
             child: Row(
               children: [
                 Container(
@@ -1162,58 +1199,82 @@ class _CouponPlaceholderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _PlaceholderBar(width: 150, height: 14),
-                      SizedBox(height: 9),
-                      _PlaceholderBar(width: 188, height: 10),
-                      SizedBox(height: 6),
-                      _PlaceholderBar(width: 126, height: 10),
+                      Text(
+                        voucher.code,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF17202C),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        isPercent
+                            ? 'Giảm ${voucher.discountValue.round()}%'
+                            : 'Giảm ${_formatMainVnd(voucher.discountValue)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF1688C7),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tối thiểu ${_formatMainVnd(voucher.minOrder)}',
+                        style: const TextStyle(
+                          color: Color(0xFF7D8995),
+                          fontSize: 11,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 const Icon(
-                  Icons.info_outline,
-                  color: Color(0xFF7D8995),
+                  Icons.check_circle,
+                  color: Color(0xFF2E9B63),
                   size: 19,
                 ),
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Divider(height: 1, color: Color(0xFFDCEFFC), thickness: 1.5),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F6F9),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    alignment: Alignment.center,
-                    child: const _PlaceholderBar(width: 96, height: 10),
+          const Divider(color: Color(0xFFDCEFFC), thickness: 1.5),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'HSD ${_formatMainDate(voucher.endDate)}',
+                  style: const TextStyle(
+                    color: Color(0xFF667085),
+                    fontSize: 11,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Container(
-                  height: 38,
-                  width: 92,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDDF2FF),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  alignment: Alignment.center,
-                  child: const _PlaceholderBar(width: 42, height: 11),
+              ),
+              Container(
+                height: 34,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDDF2FF),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-              ],
-            ),
+                child: const Text(
+                  'Đã lưu',
+                  style: TextStyle(
+                    color: Color(0xFF1688C7),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1221,114 +1282,258 @@ class _CouponPlaceholderCard extends StatelessWidget {
   }
 }
 
-class _RecommendationPlaceholderCarousel extends StatelessWidget {
-  const _RecommendationPlaceholderCarousel();
+class _RecommendationHotelCarousel extends StatefulWidget {
+  const _RecommendationHotelCarousel();
+
+  @override
+  State<_RecommendationHotelCarousel> createState() =>
+      _RecommendationHotelCarouselState();
+}
+
+class _RecommendationHotelCarouselState
+    extends State<_RecommendationHotelCarousel> {
+  late Future<List<Hotel>> _hotels;
+  final Map<String, Future<List<String>>> _images = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _hotels = apiRepository.hotels();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Hotel>>(
+      future: _hotels,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 274,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+        if (snapshot.hasError) {
+          return _SavedSectionMessage(
+            message: 'Không thể tải khách sạn đề xuất.',
+            onRetry: () => setState(() => _hotels = apiRepository.hotels()),
+          );
+        }
+        final hotels = snapshot.data ?? const <Hotel>[];
+        if (hotels.isEmpty) {
+          return const _SavedSectionMessage(
+            message: 'Chưa có khách sạn đề xuất.',
+          );
+        }
+        return SizedBox(
+          height: 274,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: hotels.length,
+            separatorBuilder: (_, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final hotel = hotels[index];
+              final imageRequest = _images.putIfAbsent(
+                hotel.id,
+                () => apiRepository.hotelImages(hotel.id),
+              );
+              return _RecommendationHotelCard(
+                hotel: hotel,
+                imageRequest: imageRequest,
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RecommendationHotelCard extends StatelessWidget {
+  const _RecommendationHotelCard({
+    required this.hotel,
+    required this.imageRequest,
+  });
+
+  final Hotel hotel;
+  final Future<List<String>> imageRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    void openHotel() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => hotel_booking.HotelDetailPage(
+            hotelName: hotel.name,
+            hotelId: hotel.id,
+            selection: hotel_booking.HotelSearchSelection(),
+          ),
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: openHotel,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 218,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE8EDF3)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x100E1F38),
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 118,
+              width: double.infinity,
+              child: FutureBuilder<List<String>>(
+                future: imageRequest,
+                builder: (context, snapshot) {
+                  final images = snapshot.data ?? const <String>[];
+                  if (images.isNotEmpty) {
+                    return Image.network(
+                      images.first,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          _mainHotelFallback(),
+                    );
+                  }
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const ColoredBox(
+                      color: Color(0xFFE7EEF5),
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    );
+                  }
+                  return _mainHotelFallback();
+                },
+              ),
+            ),
+            Container(
+              height: 34,
+              width: double.infinity,
+              color: const Color(0xFF2869AA),
+              alignment: Alignment.center,
+              child: const Text(
+                'Đề xuất',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hotel.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF17202C),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    hotel.city.isEmpty ? hotel.address : hotel.city,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF7D8995),
+                      fontSize: 11,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.star_rounded,
+                        color: Color(0xFFFFC928),
+                        size: 17,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        (hotel.starRating ?? 5).toStringAsFixed(1),
+                        style: const TextStyle(
+                          color: Color(0xFF1688C7),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Spacer(),
+                      const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Color(0xFF2A6EEB),
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedSectionMessage extends StatelessWidget {
+  const _SavedSectionMessage({required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 274,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: 3,
-        separatorBuilder: (context, index) => const SizedBox(width: 12),
-        itemBuilder: (context, index) => const _RecommendationPlaceholderCard(),
+      height: 86,
+      child: Center(
+        child: onRetry == null
+            ? Text(message, style: const TextStyle(color: Color(0xFF7D8995)))
+            : TextButton(onPressed: onRetry, child: Text(message)),
       ),
     );
   }
 }
 
-class _RecommendationPlaceholderCard extends StatelessWidget {
-  const _RecommendationPlaceholderCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 218,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8EDF3)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x100E1F38),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 118,
-            width: double.infinity,
-            color: const Color(0xFFE7EEF5),
-            child: const Icon(
-              Icons.image_outlined,
-              color: Color(0xFF9AA9B8),
-              size: 34,
-            ),
-          ),
-          Container(
-            height: 34,
-            width: double.infinity,
-            color: const Color(0xFF2869AA),
-            alignment: Alignment.center,
-            child: const _PlaceholderBar(width: 126, height: 11),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _PlaceholderBar(width: 166, height: 13),
-                const SizedBox(height: 10),
-                const _PlaceholderBar(width: 126, height: 10),
-                const SizedBox(height: 13),
-                Row(
-                  children: [
-                    const _PlaceholderBar(width: 60, height: 12),
-                    const Spacer(),
-                    Container(
-                      width: 58,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F1FF),
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                const _PlaceholderBar(width: 96, height: 10),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+String _formatMainVnd(double value) {
+  final digits = value.round().toString();
+  final buffer = StringBuffer();
+  for (var index = 0; index < digits.length; index++) {
+    if (index > 0 && (digits.length - index) % 3 == 0) buffer.write('.');
+    buffer.write(digits[index]);
   }
+  return '$bufferđ';
 }
 
-class _PlaceholderBar extends StatelessWidget {
-  const _PlaceholderBar({required this.width, required this.height});
+String _formatMainDate(DateTime? date) {
+  if (date == null) return '--/--/----';
+  return '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year}';
+}
 
-  final double width;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: const Color(0xFFE7ECF1),
-        borderRadius: BorderRadius.circular(height),
-      ),
-    );
-  }
+Widget _mainHotelFallback() {
+  return const ColoredBox(
+    color: Color(0xFFE7EEF5),
+    child: Center(
+      child: Icon(Icons.hotel_rounded, color: Color(0xFF9AA9B8), size: 34),
+    ),
+  );
 }
 
 class _BookingActivityShortcuts extends StatelessWidget {
@@ -1413,10 +1618,12 @@ class SavedPage extends StatelessWidget {
     super.key,
     required this.savedArticles,
     required this.onRemoveArticle,
+    required this.onOpenArticle,
   });
 
   final List<TravelArticle> savedArticles;
   final ValueChanged<TravelArticle> onRemoveArticle;
+  final ValueChanged<TravelArticle> onOpenArticle;
 
   @override
   Widget build(BuildContext context) {
@@ -1490,6 +1697,7 @@ class SavedPage extends StatelessWidget {
                   _SavedArticlesTab(
                     articles: savedArticles,
                     onRemoveArticle: onRemoveArticle,
+                    onOpenArticle: onOpenArticle,
                   ),
                   const _SavedHotelsTab(),
                 ],
@@ -1576,10 +1784,12 @@ class _SavedArticlesTab extends StatelessWidget {
   const _SavedArticlesTab({
     required this.articles,
     required this.onRemoveArticle,
+    required this.onOpenArticle,
   });
 
   final List<TravelArticle> articles;
   final ValueChanged<TravelArticle> onRemoveArticle;
+  final ValueChanged<TravelArticle> onOpenArticle;
 
   @override
   Widget build(BuildContext context) {
@@ -1629,6 +1839,7 @@ class _SavedArticlesTab extends StatelessWidget {
             child: _SavedArticleCard(
               article: article,
               onRemove: () => onRemoveArticle(article),
+              onTap: () => onOpenArticle(article),
             ),
           ),
         ),
@@ -1638,10 +1849,15 @@ class _SavedArticlesTab extends StatelessWidget {
 }
 
 class _SavedArticleCard extends StatelessWidget {
-  const _SavedArticleCard({required this.article, required this.onRemove});
+  const _SavedArticleCard({
+    required this.article,
+    required this.onRemove,
+    required this.onTap,
+  });
 
   final TravelArticle article;
   final VoidCallback onRemove;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1649,83 +1865,79 @@ class _SavedArticleCard extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: 112,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 112,
-              height: double.infinity,
-              child: Image.network(
-                article.imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const ColoredBox(
-                  color: Color(0xFFE8F1FF),
-                  child: Icon(
-                    Icons.landscape_outlined,
-                    color: Color(0xFF2A6EEB),
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 112,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 112,
+                height: double.infinity,
+                child: DestinationImage(
+                  location: article.location,
+                  networkUrl: article.imageUrl,
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 6, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        article.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF17202C),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            color: Color(0xFF2A6EEB),
+                            size: 15,
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              article.location,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF66707D),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Bỏ lưu bài viết',
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 32,
+                              height: 32,
+                            ),
+                            padding: EdgeInsets.zero,
+                            onPressed: onRemove,
+                            icon: const Icon(
+                              Icons.bookmark_rounded,
+                              color: Color(0xFF2A6EEB),
+                              size: 19,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 6, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      article.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF17202C),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_outlined,
-                          color: Color(0xFF2A6EEB),
-                          size: 15,
-                        ),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            article.location,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF66707D),
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Bỏ lưu bài viết',
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 32,
-                            height: 32,
-                          ),
-                          padding: EdgeInsets.zero,
-                          onPressed: onRemove,
-                          icon: const Icon(
-                            Icons.bookmark_rounded,
-                            color: Color(0xFF2A6EEB),
-                            size: 19,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
