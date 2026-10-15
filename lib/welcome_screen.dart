@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import 'notification_screen.dart';
 import 'onboarding_widgets.dart';
@@ -79,7 +80,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           onChanged: (value) => setState(() => _language = value),
         ),
       ],
-    );
+    ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.04);
   }
 }
 

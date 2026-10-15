@@ -783,7 +783,7 @@ class _HotelRowSectionState extends State<HotelRowSection> {
               },
               borderRadius: BorderRadius.circular(16),
               child: const SizedBox(width: double.infinity, height: 180),
-            ),
+              ).animate().fadeIn(duration: 450.ms).scale(begin: const Offset(0.98, 0.98)),
           ),
         ],
       ],

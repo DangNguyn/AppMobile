@@ -19,28 +19,15 @@ class RoomBookingPage extends StatefulWidget {
 }
 
 class _RoomBookingPageState extends State<RoomBookingPage> {
-  static const List<_BookingCoupon> _coupons = [
-    _BookingCoupon(
-      code: 'TRAVEL10',
-      title: 'Giảm 10%',
-      description: 'Giảm 10% tổng tiền phòng',
-      percentOff: 10,
-    ),
-    _BookingCoupon(
-      code: 'WELCOME100',
-      title: 'Giảm 100.000đ',
-      description: 'Ưu đãi 100.000đ cho đơn đặt phòng',
-      amountOff: 100000,
-    ),
-  ];
-
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _requestController = TextEditingController();
   int _step = 0;
-  _BookingCoupon? _selectedCoupon;
+  Voucher? _selectedVoucher;
+  double? _discountAmount;
+  double? _validatedTotalAmount;
   String? _selectedPaymentMethod;
   bool _isSubmitting = false;
   List<String> _availableRoomIds = const [];
@@ -48,11 +35,12 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   int get _nights => widget.selection.dateRange.duration.inDays.clamp(1, 365);
   int get _nightlyRate => widget.roomType?.basePrice.round() ?? 1250000;
 
-  int get _subtotal => _nightlyRate * _nights * widget.selection.roomCount;
+  double get _subtotal =>
+      (_nightlyRate * _nights * widget.selection.roomCount).toDouble();
 
-  int get _discount => _selectedCoupon?.discountFor(_subtotal) ?? 0;
+  double get _discount => _discountAmount ?? 0;
 
-  int get _total => _subtotal - _discount;
+  double get _total => _validatedTotalAmount ?? _subtotal - _discount;
 
   Future<void> _createBooking() async {
     if (widget.hotelId == null || _availableRoomIds.isEmpty || _isSubmitting) {
@@ -76,11 +64,54 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         checkOut: _dateOnly(widget.selection.dateRange.end),
         adults: widget.selection.adultCount,
         children: widget.selection.childCount,
-        voucherCode: _selectedCoupon?.code,
+        voucherCode: _selectedVoucher?.code,
       );
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Đặt phòng đang ở trạng thái ${booking.status}.')),
+      );
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 180,
+                height: 150,
+                child: Lottie.network(
+                  'https://assets10.lottiefiles.com/packages/lf20_s2lryxtd.json',
+                  repeat: false,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF2E9B63),
+                    size: 72,
+                  ),
+                ),
+              ),
+              const Text(
+                'Đặt phòng thành công!',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Thông tin đặt phòng của bạn đã được ghi nhận.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Hoàn tất'),
+            ),
+          ],
+        ),
       );
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (error) {
@@ -128,8 +159,8 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     super.dispose();
   }
 
-  String _formatVnd(int amount) {
-    final digits = amount.toString();
+  String _formatVnd(num amount) {
+    final digits = amount.round().toString();
     final formatted = StringBuffer();
     for (var index = 0; index < digits.length; index++) {
       if (index > 0 && (digits.length - index) % 3 == 0) {
@@ -147,69 +178,23 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   }
 
   Future<void> _chooseCoupon() async {
-    final couponCode = await showModalBottomSheet<String>(
+    final validation = await showModalBottomSheet<VoucherValidation>(
       context: context,
       backgroundColor: Colors.white,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD8DEE5),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Chọn mã giảm giá',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.local_offer_outlined),
-                title: const Text('Không sử dụng mã'),
-                trailing: _selectedCoupon == null
-                    ? const Icon(Icons.check_circle, color: Color(0xFF0E1F38))
-                    : null,
-                onTap: () => Navigator.pop(context, 'none'),
-              ),
-              for (final coupon in _coupons)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.confirmation_number_outlined,
-                    color: Color(0xFF0E1F38),
-                  ),
-                  title: Text(coupon.title),
-                  subtitle: Text('${coupon.description} · ${coupon.code}'),
-                  trailing: _selectedCoupon?.code == coupon.code
-                      ? const Icon(Icons.check_circle, color: Color(0xFF0E1F38))
-                      : null,
-                  onTap: () => Navigator.pop(context, coupon.code),
-                ),
-            ],
-          ),
-        ),
+      builder: (context) => _VoucherSelectionSheet(
+        currentSubtotal: _subtotal,
+        currentDate: DateTime.now(),
       ),
     );
-    if (!mounted || couponCode == null) return;
+    if (!mounted || validation == null) return;
     setState(() {
-      _selectedCoupon = couponCode == 'none'
-          ? null
-          : _coupons.firstWhere((coupon) => coupon.code == couponCode);
+      _selectedVoucher = validation.voucher;
+      _discountAmount = validation.discountAmount;
+      _validatedTotalAmount = validation.totalAmount;
     });
   }
 
@@ -407,16 +392,16 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                _selectedCoupon == null
+                                _selectedVoucher == null
                                     ? 'Chọn phiếu giảm giá hoặc coupon'
-                                    : '${_selectedCoupon!.title} · ${_selectedCoupon!.code}',
+                                    : '${_selectedVoucher!.code} · Giảm ${_formatVnd(_discount)}',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                             Text(
-                              _selectedCoupon == null ? 'Chọn' : 'Đổi',
+                              _selectedVoucher == null ? 'Chọn' : 'Đổi',
                               style: const TextStyle(
                                 color: Color(0xFF0E1F38),
                                 fontWeight: FontWeight.w700,
@@ -437,10 +422,10 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                           '$_nights đêm × ${widget.selection.roomCount} phòng',
                           _formatVnd(_subtotal),
                         ),
-                        if (_selectedCoupon != null) ...[
+                        if (_selectedVoucher != null) ...[
                           const SizedBox(height: 10),
                           _priceLine(
-                            'Ưu đãi ${_selectedCoupon!.code}',
+                            'Ưu đãi ${_selectedVoucher!.code}',
                             '- ${_formatVnd(_discount)}',
                             valueColor: const Color(0xFF24824B),
                           ),
@@ -840,6 +825,223 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         const SizedBox(width: 12),
         Text(value, style: style),
       ],
+    );
+  }
+
+}
+
+class _VoucherSelectionSheet extends StatefulWidget {
+  const _VoucherSelectionSheet({
+    required this.currentSubtotal,
+    required this.currentDate,
+  });
+
+  final double currentSubtotal;
+  final DateTime currentDate;
+
+  @override
+  State<_VoucherSelectionSheet> createState() => _VoucherSelectionSheetState();
+}
+
+class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
+  late Future<List<Voucher>> _vouchers;
+  Set<String> _savedCodes = {};
+  String? _loadingCode;
+
+  @override
+  void initState() {
+    super.initState();
+    _vouchers = _loadVouchers();
+  }
+
+  Future<List<Voucher>> _loadVouchers() async {
+    final saved = await voucherStorageService.getSavedVoucherCodes();
+    if (mounted) setState(() => _savedCodes = saved.toSet());
+    final vouchers = await apiRepository.vouchers();
+    vouchers.sort(
+      (first, second) => (_savedCodes.contains(second.code.toUpperCase()) ? 1 : 0)
+          .compareTo(_savedCodes.contains(first.code.toUpperCase()) ? 1 : 0),
+    );
+    return vouchers;
+  }
+
+  bool _isValid(Voucher voucher) =>
+      voucher.status == 'active' &&
+      voucher.startDate != null &&
+      voucher.endDate != null &&
+      !_dateOnly(widget.currentDate).isBefore(_dateOnly(voucher.startDate!)) &&
+      !_dateOnly(widget.currentDate).isAfter(_dateOnly(voucher.endDate!)) &&
+      widget.currentSubtotal >= voucher.minOrder;
+
+  DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  String _formatVnd(num value) =>
+      '${value.round().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}đ';
+
+  String _formatDate(DateTime? value) {
+    if (value == null) return 'Không xác định';
+    return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+  }
+
+  String _reason(Voucher voucher) {
+    if (widget.currentSubtotal < voucher.minOrder) {
+      return 'Đơn tối thiểu ${_formatVnd(voucher.minOrder)} (Còn thiếu ${_formatVnd(voucher.minOrder - widget.currentSubtotal)})';
+    }
+    if (!_isValid(voucher)) {
+      return 'Mã chỉ áp dụng từ ${_formatDate(voucher.startDate)} đến ${_formatDate(voucher.endDate)}';
+    }
+    return '';
+  }
+
+  Future<void> _apply(Voucher voucher) async {
+    if (!_isValid(voucher)) return;
+    setState(() => _loadingCode = voucher.code);
+    try {
+      final validation = await apiRepository.validateVoucher(
+        code: voucher.code,
+        subtotal: widget.currentSubtotal,
+      );
+      if (mounted) Navigator.of(context).pop(validation);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _loadingCode = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD8DEE5),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Chọn mã giảm giá',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tạm tính: ${_formatVnd(widget.currentSubtotal)}',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: FutureBuilder<List<Voucher>>(
+                  future: _vouchers,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Không thể tải mã: ${snapshot.error}'));
+                    }
+                    final vouchers = snapshot.data ?? const <Voucher>[];
+                    if (vouchers.isEmpty) {
+                      return const Center(child: Text('Chưa có mã giảm giá.'));
+                    }
+                    return ListView.separated(
+                      itemCount: vouchers.length,
+                      separatorBuilder: (_, index) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final voucher = vouchers[index];
+                        final valid = _isValid(voucher);
+                        final isPercent = voucher.discountType == 'percent';
+                        return Opacity(
+                          opacity: valid ? 1 : 0.5,
+                          child: Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(
+                                color: valid
+                                    ? const Color(0xFFB9D5FF)
+                                    : const Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.local_offer_rounded,
+                                    color: Color(0xFF2A6EEB),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          voucher.code,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        Text(
+                                          isPercent
+                                              ? 'Giảm ${voucher.discountValue.round()}%'
+                                              : 'Giảm ${_formatVnd(voucher.discountValue)}',
+                                          style: const TextStyle(
+                                            color: Color(0xFF1688C7),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        Text(
+                                          valid
+                                              ? 'HSD ${_formatDate(voucher.endDate)}'
+                                              : _reason(voucher),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.black54,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton(
+                                    onPressed: valid && _loadingCode == null
+                                        ? () => _apply(voucher)
+                                        : null,
+                                    child: Text(
+                                      _loadingCode == voucher.code
+                                          ? 'Đang kiểm tra'
+                                          : 'Áp dụng',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

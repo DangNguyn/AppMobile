@@ -166,6 +166,28 @@ class ApiRepository {
             'payment_method': method,
             'amount': amount
           })));
+
+  Future<List<Voucher>> vouchers() async =>
+      _items(await client.get('/api/vouchers'))
+          .map(Voucher.fromJson)
+          .toList();
+
+  Future<Voucher> voucher(String code) async => Voucher.fromJson(
+        _data(await client.get('/api/vouchers/${Uri.encodeComponent(code)}')),
+      );
+
+  Future<VoucherValidation> validateVoucher({
+    required String code,
+    required double subtotal,
+  }) async =>
+      VoucherValidation.fromJson(
+        _data(
+          await client.post(
+            '/api/vouchers/validate',
+            body: {'code': code, 'subtotal': subtotal},
+          ),
+        ),
+      );
 }
 
 final apiRepository = ApiRepository();

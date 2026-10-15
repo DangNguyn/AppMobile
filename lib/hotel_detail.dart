@@ -1150,8 +1150,18 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             onNotification: _handleScrollNotification,
             child: CustomScrollView(
               slivers: [
-                SliverToBoxAdapter(child: _buildHotelHero()),
-                SliverToBoxAdapter(child: _buildHotelSections()),
+                SliverToBoxAdapter(
+                  child: _buildHotelHero()
+                      .animate()
+                      .fadeIn(duration: 500.ms)
+                      .slideY(begin: 0.06),
+                ),
+                SliverToBoxAdapter(
+                  child: _buildHotelSections()
+                      .animate()
+                      .fadeIn(delay: 120.ms, duration: 500.ms)
+                      .slideY(begin: 0.05),
+                ),
               ],
             ),
           ),

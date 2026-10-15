@@ -280,6 +280,60 @@ class Payment {
       );
 }
 
+class Voucher {
+  const Voucher({
+    required this.id,
+    required this.code,
+    required this.discountType,
+    required this.discountValue,
+    required this.minOrder,
+    required this.startDate,
+    required this.endDate,
+    required this.status,
+  });
+
+  final String id;
+  final String code;
+  final String discountType;
+  final double discountValue;
+  final double minOrder;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final String status;
+
+  factory Voucher.fromJson(Map<String, dynamic> json) => Voucher(
+        id: '${json['id'] ?? ''}',
+        code: '${json['code'] ?? ''}',
+        discountType: '${json['discount_type'] ?? ''}',
+        discountValue: _number(json['discount_value']) ?? 0,
+        minOrder: _number(json['min_order']) ?? 0,
+        startDate: _date(json['start_date']),
+        endDate: _date(json['end_date']),
+        status: '${json['status'] ?? ''}',
+      );
+}
+
+class VoucherValidation {
+  const VoucherValidation({
+    required this.voucher,
+    required this.discountAmount,
+    required this.totalAmount,
+  });
+
+  final Voucher voucher;
+  final double discountAmount;
+  final double totalAmount;
+
+  factory VoucherValidation.fromJson(Map<String, dynamic> json) =>
+      VoucherValidation(
+        voucher: Voucher.fromJson(
+          (json['voucher'] as Map?)?.cast<String, dynamic>() ?? {},
+        ),
+        discountAmount: _number(json['discount_amount']) ?? 0,
+        totalAmount: _number(json['total_amount']) ?? 0,
+      );
+}
+
 double? _number(dynamic value) => value is num ? value.toDouble() : double.tryParse('$value');
 int _integer(dynamic value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 DateTime? _date(dynamic value) => value == null ? null : DateTime.tryParse('$value');
