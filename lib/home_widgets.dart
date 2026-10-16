@@ -107,7 +107,7 @@ class BrandOfferCard extends StatelessWidget {
             'Giảm đến',
             style: TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w400,
               color: Colors.white.withValues(alpha: 0.9),
             ),
           ),

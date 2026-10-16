@@ -191,6 +191,7 @@ class _TravelHomePageState extends State<TravelHomePage> {
                     ? ExplorePage(
                         savedArticleTitles: _savedArticleTitles,
                         onToggleSaved: _toggleSavedArticle,
+                        onExploreDestination: _openHotelSearchResults,
                       )
                     : _selectedNavIndex == 2
                         ? BookingPage(
@@ -217,7 +218,10 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                     Navigator.of(context).push(
                                   MaterialPageRoute<void>(
                                     builder: (_) => TravelArticleDetailPage(
-                                        article: article),
+                                      article: article,
+                                      onExploreDestination:
+                                          _openHotelSearchResults,
+                                    ),
                                   ),
                                 ),
                               )
@@ -258,7 +262,10 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                                       selection:
                                                           _hotelSearchSelection),
                                                   const SizedBox(height: 20),
-                                                  const BrandOfferSection(),
+                                                  BrandOfferSection(
+                                                    selection:
+                                                        _hotelSearchSelection,
+                                                  ),
                                                   const SizedBox(height: 18),
                                                   const DiscoverBanner(),
                                                   const SizedBox(height: 24),
@@ -1126,7 +1133,7 @@ class _SavedVoucherCarouselState extends State<_SavedVoucherCarousel> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
-            height: 166,
+            height: 140,
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
@@ -1143,7 +1150,7 @@ class _SavedVoucherCarouselState extends State<_SavedVoucherCarousel> {
           );
         }
         return SizedBox(
-          height: 166,
+          height: 140,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: vouchers.length,
@@ -1166,115 +1173,134 @@ class _SavedVoucherCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isPercent = voucher.discountType == 'percent';
     return Container(
-      width: 280,
-      padding: const EdgeInsets.all(14),
+      width: 250,
+      height: 120,
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8EDF3)),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: const Color(0xFFDCE8F7)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x100E1F38),
-            blurRadius: 8,
+            color: Color(0x100875F5),
+            blurRadius: 9,
             offset: Offset(0, 3),
           ),
         ],
       ),
-      child: Column(
+      child: Row(
         children: [
-          Expanded(
-            child: Row(
+          Container(
+            width: 56,
+            height: double.infinity,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0875F5), Color(0xFF42B8F5)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE5F6FF),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.confirmation_num_outlined,
-                    color: Color(0xFF28A9DD),
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        voucher.code,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF17202C),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        isPercent
-                            ? 'Giảm ${voucher.discountValue.round()}%'
-                            : 'Giảm ${_formatMainVnd(voucher.discountValue)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF1688C7),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tối thiểu ${_formatMainVnd(voucher.minOrder)}',
-                        style: const TextStyle(
-                          color: Color(0xFF7D8995),
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
                 const Icon(
-                  Icons.check_circle,
-                  color: Color(0xFF2E9B63),
-                  size: 19,
+                  Icons.confirmation_number_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        isPercent
+                            ? '${voucher.discountValue.round()}%'
+                            : _formatMainVnd(voucher.discountValue),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          const Divider(color: Color(0xFFDCEFFC), thickness: 1.5),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'HSD ${_formatMainDate(voucher.endDate)}',
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isPercent
+                      ? 'Giảm ${voucher.discountValue.round()}%'
+                      : 'Giảm ${_formatMainVnd(voucher.discountValue)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF667085),
-                    fontSize: 11,
+                    color: Color(0xFF008ACB),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-              Container(
-                height: 34,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDDF2FF),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'Đã lưu',
-                  style: TextStyle(
-                    color: Color(0xFF1688C7),
-                    fontSize: 12,
+                const SizedBox(height: 2),
+                Text(
+                  'Mã ${voucher.code}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF17202C),
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-              ),
-            ],
+                Text(
+                  'Tối thiểu ${_formatMainVnd(voucher.minOrder)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF7D8995),
+                    fontSize: 9,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'HSD ${_formatMainDate(voucher.endDate)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF667085),
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.check_circle,
+                      color: Color(0xFF2E9B63),
+                      size: 14,
+                    ),
+                    const SizedBox(width: 3),
+                    const Text(
+                      'Đã lưu',
+                      style: TextStyle(
+                        color: Color(0xFF2E9B63),
+                      fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -2915,7 +2941,6 @@ class HotelRowSection extends StatefulWidget {
 }
 
 class _HotelRowSectionState extends State<HotelRowSection> {
-  int _selectedIndex = -1;
   late Future<List<Hotel>> _hotels;
   final Map<String, Future<List<String>>> _hotelImageRequests = {};
 
@@ -2927,8 +2952,6 @@ class _HotelRowSectionState extends State<HotelRowSection> {
 
   @override
   Widget build(BuildContext context) {
-    const labels = ['Lên đến 250K/đ', 'Sắp hết', 'Giá tốt', 'Ưu đãi hôm nay'];
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2994,65 +3017,7 @@ class _HotelRowSectionState extends State<HotelRowSection> {
             );
           },
         ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 44,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: ClampingScrollPhysics(),
-            ),
-            itemCount: labels.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 12),
-            itemBuilder: (context, index) => _InlinePill(
-              label: labels[index],
-              isSelected: index == _selectedIndex,
-              onTap: () => setState(
-                () => _selectedIndex = _selectedIndex == index ? -1 : index,
-              ),
-            ),
-          ),
-        ),
       ],
-    );
-  }
-}
-
-class _InlinePill extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _InlinePill({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color:
-                isSelected ? const Color(0xFF2A6EEB) : const Color(0xFFF5F5F7),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: isSelected ? Colors.white : Colors.black87,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -3234,8 +3199,136 @@ class _HomeHotelCard extends StatelessWidget {
   }
 }
 
-class BrandOfferSection extends StatelessWidget {
-  const BrandOfferSection({super.key});
+class BrandOfferSection extends StatefulWidget {
+  const BrandOfferSection({super.key, required this.selection});
+
+  final hotel_booking.HotelSearchSelection selection;
+
+  @override
+  State<BrandOfferSection> createState() => _BrandOfferSectionState();
+}
+
+class _BrandHotelOffer {
+  const _BrandHotelOffer({
+    required this.hotel,
+    required this.imageUrl,
+    required this.voucher,
+    required this.discountAmount,
+  });
+
+  final Hotel hotel;
+  final String imageUrl;
+  final Voucher voucher;
+  final double discountAmount;
+}
+
+class _BrandOfferSectionState extends State<BrandOfferSection> {
+  late Future<List<_BrandHotelOffer>> _offers;
+
+  @override
+  void initState() {
+    super.initState();
+    _offers = _loadOffers();
+  }
+
+  bool _isVoucherActive(Voucher voucher, DateTime today) {
+    if (voucher.status.toLowerCase() != 'active') return false;
+    final start = voucher.startDate;
+    final end = voucher.endDate;
+    if (start != null && _dateOnly(today).isBefore(_dateOnly(start))) {
+      return false;
+    }
+    if (end != null && _dateOnly(today).isAfter(_dateOnly(end))) return false;
+    return true;
+  }
+
+  DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  Future<List<_BrandHotelOffer>> _loadOffers() async {
+    final data = await Future.wait<dynamic>([
+      apiRepository.hotels(),
+      apiRepository.vouchers(),
+    ]);
+    final hotels = data[0] as List<Hotel>;
+    final today = DateTime.now();
+    final vouchers = (data[1] as List<Voucher>)
+        .where((voucher) => _isVoucherActive(voucher, today))
+        .toList();
+    final nights = widget.selection.dateRange.duration.inDays.clamp(1, 365);
+    final rooms = widget.selection.roomCount;
+
+    final results = await Future.wait(hotels.map((hotel) async {
+      try {
+        final details = await Future.wait<dynamic>([
+          apiRepository.roomTypes(hotel.id),
+          apiRepository.hotelImages(hotel.id),
+        ]);
+        final roomTypes = details[0] as List<RoomType>;
+        final images = details[1] as List<String>;
+        final prices = roomTypes
+            .map((roomType) => roomType.basePrice)
+            .where((price) => price > 0)
+            .toList();
+        if (prices.isEmpty || images.isEmpty || images.first.isEmpty) {
+          return null;
+        }
+        prices.sort();
+        final subtotal = prices.first * nights * rooms;
+        final applicable = vouchers
+            .where((voucher) => voucher.minOrder <= subtotal)
+            .toList();
+        if (applicable.isEmpty) return null;
+
+        double estimatedDiscount(Voucher voucher) {
+          final amount = voucher.discountType.toLowerCase() == 'percent'
+              ? subtotal * voucher.discountValue / 100
+              : voucher.discountValue;
+          return amount.clamp(0, subtotal).toDouble();
+        }
+
+        applicable.sort((a, b) =>
+            estimatedDiscount(b).compareTo(estimatedDiscount(a)));
+        final bestVoucher = applicable.first;
+        return _BrandHotelOffer(
+          hotel: hotel,
+          imageUrl: images.first,
+          voucher: bestVoucher,
+          discountAmount: estimatedDiscount(bestVoucher),
+        );
+      } catch (_) {
+        return null;
+      }
+    }));
+
+    final offers = results.whereType<_BrandHotelOffer>().toList()
+      ..sort((a, b) => b.discountAmount.compareTo(a.discountAmount));
+    return offers;
+  }
+
+  String _formatVnd(num value) {
+    final digits = value.round().toString();
+    final formatted = StringBuffer();
+    for (var index = 0; index < digits.length; index++) {
+      if (index > 0 && (digits.length - index) % 3 == 0) {
+        formatted.write('.');
+      }
+      formatted.write(digits[index]);
+    }
+    return '${formatted.toString()}đ';
+  }
+
+  void _openHotel(_BrandHotelOffer offer) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => hotel_booking.HotelDetailPage(
+          hotelName: offer.hotel.name,
+          hotelId: offer.hotel.id,
+          selection: widget.selection,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3250,50 +3343,42 @@ class BrandOfferSection extends StatelessWidget {
             color: Colors.black,
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         SizedBox(
-          height: 138,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: const [
-                SizedBox(
-                  width: 130,
-                  child: BrandOfferCard(
-                    color: Color(0xFFD7C298),
-                    title: 'MƯỜNG THANH',
-                    discount: '20%',
-                  ),
+          height: 198,
+          child: FutureBuilder<List<_BrandHotelOffer>>(
+            future: _offers,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const Center(
+                  child: Text('Không thể tải ưu đãi khách sạn.'),
+                );
+              }
+              final offers = snapshot.data ?? const <_BrandHotelOffer>[];
+              if (offers.isEmpty) {
+                return const Center(
+                  child: Text('Hiện chưa có voucher phù hợp với khách sạn.'),
+                );
+              }
+              return ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: offers.length,
+                separatorBuilder: (_, index) => const SizedBox(width: 12),
+                itemBuilder: (context, index) => _BrandHotelOfferCard(
+                  offer: offers[index],
+                  discountText:
+                      offers[index].voucher.discountType.toLowerCase() ==
+                              'percent'
+                          ? '${offers[index].voucher.discountValue.round()}%'
+                          : _formatVnd(offers[index].voucher.discountValue),
+                  minOrderText: _formatVnd(offers[index].voucher.minOrder),
+                  onTap: () => _openHotel(offers[index]),
                 ),
-                SizedBox(width: 14),
-                SizedBox(
-                  width: 130,
-                  child: BrandOfferCard(
-                    color: Color(0xFFE5D4A6),
-                    title: 'HANOI BLISS',
-                    discount: '20%',
-                  ),
-                ),
-                SizedBox(width: 14),
-                SizedBox(
-                  width: 130,
-                  child: BrandOfferCard(
-                    color: Color(0xFF3F78D7),
-                    title: 'HOTELS & RESORTS',
-                    discount: '40%',
-                  ),
-                ),
-                SizedBox(width: 14),
-                SizedBox(
-                  width: 130,
-                  child: BrandOfferCard(
-                    color: Color(0xFF59A88A),
-                    title: 'MELIÁ HOTELS',
-                    discount: '30%',
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ],
@@ -3301,61 +3386,123 @@ class BrandOfferSection extends StatelessWidget {
   }
 }
 
-class BrandOfferCard extends StatelessWidget {
-  final Color color;
-  final String title;
-  final String discount;
-
-  const BrandOfferCard({
-    super.key,
-    required this.color,
-    required this.title,
-    required this.discount,
+class _BrandHotelOfferCard extends StatelessWidget {
+  const _BrandHotelOfferCard({
+    required this.offer,
+    required this.discountText,
+    required this.minOrderText,
+    required this.onTap,
   });
+
+  final _BrandHotelOffer offer;
+  final String discountText;
+  final String minOrderText;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 138,
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
+    return SizedBox(
+      width: 190,
+      child: Material(
+        color: const Color(0xFF0E1F38),
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                offer.imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const ColoredBox(
+                  color: Color(0xFFB8D7E8),
+                  child: Icon(Icons.hotel_rounded, color: Colors.white, size: 42),
+                ),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0x22000000),
+                      Color(0x33000000),
+                      Color(0xE60E1F38),
+                    ],
+                    stops: [0, 0.35, 1],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 10,
+                left: 10,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.94),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    offer.voucher.code,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF1269D3),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      offer.hotel.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        height: 1.15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Giảm đến $discountText',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF8ED2FF),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Đơn từ $minOrderText · Xem khách sạn',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Giảm đến',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withValues(alpha: 0.9),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            discount,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              height: 0.9,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

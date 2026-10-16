@@ -150,6 +150,9 @@ class Booking {
     this.qrToken,
     this.createdAt,
     this.rooms = const [],
+    this.hotelName,
+    this.roomTypeName,
+    this.guest,
   });
 
   final String id;
@@ -164,6 +167,9 @@ class Booking {
   final String? qrToken;
   final DateTime? createdAt;
   final List<BookingRoom> rooms;
+  final String? hotelName;
+  final String? roomTypeName;
+  final BookingGuest? guest;
 
   factory Booking.fromJson(Map<String, dynamic> json) => Booking(
         id: '${json['id'] ?? ''}',
@@ -178,6 +184,53 @@ class Booking {
         qrToken: json['qr_token'] as String?,
         createdAt: _date(json['created_at']),
         rooms: _list(json['rooms']).map(BookingRoom.fromJson).toList(),
+        hotelName: json['hotel_name'] as String?,
+        roomTypeName: json['room_type_name'] as String?,
+        guest: json['guest'] is Map
+            ? BookingGuest.fromJson((json['guest'] as Map).cast<String, dynamic>())
+            : null,
+      );
+
+  Booking copyWith({
+    List<BookingRoom>? rooms,
+    String? hotelName,
+    String? roomTypeName,
+    BookingGuest? guest,
+  }) =>
+      Booking(
+        id: id,
+        hotelId: hotelId,
+        checkIn: checkIn,
+        checkOut: checkOut,
+        adults: adults,
+        children: children,
+        status: status,
+        bookingCode: bookingCode,
+        totalAmount: totalAmount,
+        qrToken: qrToken,
+        createdAt: createdAt,
+        rooms: rooms ?? this.rooms,
+        hotelName: hotelName ?? this.hotelName,
+        roomTypeName: roomTypeName ?? this.roomTypeName,
+        guest: guest ?? this.guest,
+      );
+}
+
+class BookingGuest {
+  const BookingGuest({
+    required this.fullName,
+    this.phone,
+    this.email,
+  });
+
+  final String fullName;
+  final String? phone;
+  final String? email;
+
+  factory BookingGuest.fromJson(Map<String, dynamic> json) => BookingGuest(
+        fullName: '${json['full_name'] ?? ''}',
+        phone: json['phone'] as String?,
+        email: json['email'] as String?,
       );
 }
 

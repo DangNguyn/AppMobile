@@ -5,6 +5,7 @@ import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'onboarding_widgets.dart';
 import 'user_service.dart';
+import 'ui_motion.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key, required this.homeBuilder});
@@ -213,11 +214,14 @@ class _AuthScreenState extends State<AuthScreen> {
         _buildModeToggle(),
         const SizedBox(height: 20),
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
+          duration: AppMotion.interactionDuration,
           child: _isLoginMode ? _buildLoginForm() : _buildRegisterForm(),
         ),
       ],
-    ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.04);
+    ).animate().fadeIn(duration: AppMotion.entranceDuration).slideY(
+          begin: 0.04,
+          duration: AppMotion.entranceDuration,
+        );
   }
 
   Widget _buildModeToggle() {
@@ -243,7 +247,7 @@ class _AuthScreenState extends State<AuthScreen> {
         onTap: () => _setMode(loginMode),
         borderRadius: BorderRadius.circular(11),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: AppMotion.interactionDuration,
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             color: selected ? Colors.white : Colors.transparent,

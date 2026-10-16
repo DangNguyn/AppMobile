@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lottie/lottie.dart';
 
 import 'destination_images.dart';
+import 'ui_motion.dart';
 
 const _navy = Color(0xFF0E1F38);
 const _blue = Color(0xFF2A6EEB);
@@ -13,10 +14,12 @@ class ExplorePage extends StatefulWidget {
     super.key,
     required this.savedArticleTitles,
     required this.onToggleSaved,
+    this.onExploreDestination,
   });
 
   final Set<String> savedArticleTitles;
   final ValueChanged<TravelArticle> onToggleSaved;
+  final ValueChanged<String>? onExploreDestination;
 
   @override
   State<ExplorePage> createState() => _ExplorePageState();
@@ -50,6 +53,7 @@ class _ExplorePageState extends State<ExplorePage> {
   Future<void> _selectRegion() async {
     final region = await showModalBottomSheet<String>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       backgroundColor: Colors.white,
       showDragHandle: true,
       builder: (context) => SafeArea(
@@ -121,7 +125,10 @@ class _ExplorePageState extends State<ExplorePage> {
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                 ),
-              ).animate().fadeIn(duration: 450.ms).slideY(begin: -0.15),
+              ).animate().fadeIn(duration: AppMotion.entranceDuration).slideY(
+                    begin: -0.08,
+                    duration: AppMotion.entranceDuration,
+                  ),
               const SizedBox(height: 4),
               Text(
                 'Cảm hứng cho chuyến đi tiếp theo của bạn',
@@ -144,7 +151,16 @@ class _ExplorePageState extends State<ExplorePage> {
                         prefixIcon: const Icon(
                           Icons.search,
                           color: Color(0xFF6E7783),
-                        ).animate().fadeIn(delay: 100.ms, duration: 450.ms).slideY(begin: 0.12),
+                        )
+                            .animate()
+                            .fadeIn(
+                              delay: AppMotion.entranceStagger,
+                              duration: AppMotion.entranceDuration,
+                            )
+                            .slideY(
+                              begin: 0.04,
+                              duration: AppMotion.entranceDuration,
+                            ),
                         suffixIcon: _searchQuery.isEmpty
                             ? null
                             : IconButton(
@@ -224,7 +240,7 @@ class _ExplorePageState extends State<ExplorePage> {
                     backgroundColor: _paleBlue,
                     labelStyle: const TextStyle(
                       color: _blue,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ),
@@ -244,12 +260,20 @@ class _ExplorePageState extends State<ExplorePage> {
                       onShare: () => _shareArticle(article),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) =>
-                              TravelArticleDetailPage(article: article),
+                          builder: (_) => TravelArticleDetailPage(
+                            article: article,
+                            onExploreDestination: widget.onExploreDestination,
+                          ),
                         ),
                       ),
                     ),
-                  ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08),
+                  )
+                      .animate()
+                      .fadeIn(duration: AppMotion.entranceDuration)
+                      .slideY(
+                        begin: 0.04,
+                        duration: AppMotion.entranceDuration,
+                      ),
                 ),
             ],
           ),
@@ -328,7 +352,7 @@ class _TravelArticleCard extends StatelessWidget {
                                   style: const TextStyle(
                                     color: Color(0xFF27303B),
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w400,
                                   ),
                                 ),
                               ),
@@ -493,9 +517,14 @@ class _EmptySearchResult extends StatelessWidget {
 }
 
 class TravelArticleDetailPage extends StatelessWidget {
-  const TravelArticleDetailPage({super.key, required this.article});
+  const TravelArticleDetailPage({
+    super.key,
+    required this.article,
+    this.onExploreDestination,
+  });
 
   final TravelArticle article;
+  final ValueChanged<String>? onExploreDestination;
 
   @override
   Widget build(BuildContext context) {
@@ -551,7 +580,7 @@ class TravelArticleDetailPage extends StatelessWidget {
                       article.location,
                       style: const TextStyle(
                         color: Color(0xFF66707D),
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -626,10 +655,8 @@ class TravelArticleDetailPage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Đã chọn khám phá ${article.location}'),
-                    ),
+                  onPressed: () => onExploreDestination?.call(
+                    article.searchLocation,
                   ),
                   icon: const Icon(Icons.explore_outlined),
                   label: const Text(
@@ -734,6 +761,7 @@ class TravelArticle {
   const TravelArticle({
     required this.title,
     required this.location,
+    required this.searchLocation,
     required this.region,
     required this.description,
     required this.readTime,
@@ -746,6 +774,7 @@ class TravelArticle {
 
   final String title;
   final String location;
+  final String searchLocation;
   final String region;
   final String description;
   final String readTime;
@@ -767,6 +796,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Kỳ quan thiên nhiên: Vịnh Hạ Long',
     location: 'Hạ Long, Quảng Ninh',
+    searchLocation: 'Hạ Long',
     region: 'Miền Bắc',
     description:
         'Du ngoạn du thuyền, khám phá hang động kỳ bí giữa làn nước xanh ngọc.',
@@ -797,6 +827,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Đảo ngọc Phú Quốc: Biển xanh cát trắng',
     location: 'Phú Quốc, Kiên Giang',
+    searchLocation: 'Phú Quốc',
     region: 'Miền Nam',
     description:
         'Lặn ngắm san hô, tận hưởng hoàng hôn rực rỡ trên những bãi biển trong veo.',
@@ -827,6 +858,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Dấu ấn hoài cổ: Phố cổ Hội An',
     location: 'Hội An, Quảng Nam',
+    searchLocation: 'Hội An',
     region: 'Miền Trung',
     description:
         'Khám phá phố đèn lồng, thưởng thức ẩm thực đường phố và nét duyên bên sông Hoài.',
@@ -857,6 +889,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Chạm đến mây trời: Bà Nà Hills & Cầu Vàng',
     location: 'Đà Nẵng',
+    searchLocation: 'Đà Nẵng',
     region: 'Miền Trung',
     description:
         'Chiêm ngưỡng cây cầu giữa mây trời và khung cảnh núi rừng từ cáp treo.',
@@ -887,6 +920,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Sa Pa sương mù: Vẻ đẹp ruộng bậc thang',
     location: 'Sa Pa, Lào Cai',
+    searchLocation: 'Sa Pa',
     region: 'Miền Bắc',
     description:
         'Chiêm ngưỡng ruộng bậc thang uốn lượn và những bản làng ẩn hiện trong mây.',
@@ -917,6 +951,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Sài Gòn không ngủ: Nhịp sống giữa lòng thành phố',
     location: 'TP. Hồ Chí Minh',
+    searchLocation: 'Hồ Chí Minh',
     region: 'Miền Nam',
     description:
         'Dạo phố trung tâm, ngắm những công trình biểu tượng và khám phá thiên đường ẩm thực.',
@@ -947,6 +982,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Nha Trang: Hẹn nhau bên vịnh biển xanh',
     location: 'Nha Trang, Khánh Hòa',
+    searchLocation: 'Nha Trang',
     region: 'Miền Trung',
     description:
         'Tận hưởng bãi biển trong xanh, đi thuyền khám phá đảo và thưởng thức hải sản miền biển.',
@@ -977,6 +1013,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Hà Nội: Một vòng phố cổ và hương vị thủ đô',
     location: 'Hà Nội',
+    searchLocation: 'Hà Nội',
     region: 'Miền Bắc',
     description:
         'Tản bộ quanh hồ Gươm, khám phá phố cổ và thưởng thức những món ngon đất Hà Thành.',
@@ -1007,6 +1044,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Đà Lạt mộng mơ: Thành phố của ngàn thông',
     location: 'Đà Lạt, Lâm Đồng',
+    searchLocation: 'Đà Lạt',
     region: 'Miền Trung',
     description:
         'Săn mây buổi sớm, dạo rừng thông và nhâm nhi cà phê giữa tiết trời se lạnh.',
@@ -1037,6 +1075,7 @@ const _travelArticles = [
   TravelArticle(
     title: 'Cố đô Huế: Dấu xưa bên dòng sông Hương',
     location: 'Huế',
+    searchLocation: 'Huế',
     region: 'Miền Trung',
     description:
         'Lắng nghe chuyện cung đình, thăm Đại Nội và thưởng thức nét tinh tế của ẩm thực Huế.',

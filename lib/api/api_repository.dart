@@ -124,6 +124,25 @@ class ApiRepository {
       _items(await client.get('/api/bookings', auth: true))
           .map(Booking.fromJson)
           .toList();
+  Future<List<BookingGuest>> bookingGuests(String bookingId) async =>
+      _items(await client.get('/api/bookings/$bookingId/guests', auth: true))
+          .map(BookingGuest.fromJson)
+          .toList();
+  Future<BookingGuest> addBookingGuest({
+    required String bookingId,
+    required String fullName,
+    required String phone,
+    required String email,
+  }) async =>
+      BookingGuest.fromJson(_data(await client.post(
+        '/api/bookings/$bookingId/guests',
+        auth: true,
+        body: {
+          'full_name': fullName,
+          'phone': phone,
+          'email': email,
+        },
+      )));
   Future<Booking> booking(String id) async => Booking.fromJson(
       _data(await client.get('/api/bookings/$id', auth: true)));
   Future<Booking> cancelBooking(String id) async => Booking.fromJson(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'user_service.dart';
+import 'ui_motion.dart';
 
 const _accountNavy = Color(0xFF0E1F38);
 const _accountBlue = _accountNavy;
@@ -450,7 +451,7 @@ class _SavedDataTile extends StatelessWidget {
         value.isEmpty ? 'Chưa cập nhật' : value,
         style: const TextStyle(
           color: Color(0xFF687482),
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w400,
         ),
       ),
       shape: showDivider
@@ -517,6 +518,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }) async {
     final result = await showModalBottomSheet<String>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       backgroundColor: Colors.white,
       showDragHandle: true,
       builder: (context) => SafeArea(
@@ -565,6 +567,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _confirmLogout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.dialogAnimationStyle,
       builder: (context) => AlertDialog(
         title: const Text('Đăng xuất'),
         content: const Text('Bạn có chắc chắn muốn đăng xuất không?'),
@@ -807,7 +810,7 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
               ],
             )
           : const Center(
-              child: CircularProgressIndicator(color: _accountBlue),
+              child: AppLoadingIndicator(size: 24),
             ),
     );
   }
@@ -846,7 +849,7 @@ class _PrivacySettingTile extends StatelessWidget {
                     style: const TextStyle(
                       color: Color(0xFF303840),
                       fontSize: 15,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -889,6 +892,7 @@ class _PasswordSecurityPageState extends State<PasswordSecurityPage> {
   Future<void> _editPin() async {
     final updatedPin = await showDialog<String>(
       context: context,
+      animationStyle: AppMotion.dialogAnimationStyle,
       builder: (_) => _PinDialog(currentPin: _pin),
     );
     if (updatedPin == null || !mounted) return;
@@ -909,6 +913,7 @@ class _PasswordSecurityPageState extends State<PasswordSecurityPage> {
   Future<void> _confirmAccountDeletion() async {
     final confirmed = await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.dialogAnimationStyle,
       builder: (context) => AlertDialog(
         title: const Text('Xóa tài khoản?'),
         content: const Text(
@@ -1224,7 +1229,7 @@ class _SettingsRow extends StatelessWidget {
                   style: const TextStyle(
                     color: Color(0xFF505A64),
                     fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w300,
                   ),
                 ),
               ),
@@ -1448,7 +1453,7 @@ class _EditAccountProfilePageState extends State<EditAccountProfilePage> {
           style: const TextStyle(
             color: Color(0xFF697481),
             fontSize: 13,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w400,
           ),
         ),
       );
@@ -1919,11 +1924,11 @@ class PaymentMethodsPage extends StatefulWidget {
 }
 
 class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
-  final List<_SavedPaymentCard> _cards = [];
+  final List<SavedPaymentCard> _cards = [];
 
   Future<void> _addCard() async {
-    final card = await Navigator.of(context).push<_SavedPaymentCard>(
-      MaterialPageRoute<_SavedPaymentCard>(
+    final card = await Navigator.of(context).push<SavedPaymentCard>(
+      MaterialPageRoute<SavedPaymentCard>(
         builder: (_) => const AddPaymentCardPage(),
       ),
     );
@@ -1935,6 +1940,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
   void _showCardInfo() {
     showDialog<void>(
       context: context,
+      animationStyle: AppMotion.dialogAnimationStyle,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.security_rounded, color: _accountBlue),
         title: const Text('Thanh toán an toàn'),
@@ -2182,8 +2188,8 @@ class _PaymentIllustration extends StatelessWidget {
   }
 }
 
-class _SavedPaymentCard {
-  const _SavedPaymentCard({
+class SavedPaymentCard {
+  const SavedPaymentCard({
     required this.holder,
     required this.lastFour,
     required this.cardType,
@@ -2203,9 +2209,9 @@ class _PaymentCardList extends StatelessWidget {
     required this.onRemoveCard,
   });
 
-  final List<_SavedPaymentCard> cards;
+  final List<SavedPaymentCard> cards;
   final VoidCallback onAddCard;
-  final ValueChanged<_SavedPaymentCard> onRemoveCard;
+  final ValueChanged<SavedPaymentCard> onRemoveCard;
 
   @override
   Widget build(BuildContext context) {
@@ -2323,7 +2329,7 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
     final cardNumber = _numberController.text.replaceAll(RegExp(r'\D'), '');
     final expiry = _expiryController.text.trim();
     Navigator.of(context).pop(
-      _SavedPaymentCard(
+      SavedPaymentCard(
         holder: _holderController.text.trim(),
         lastFour: cardNumber.substring(cardNumber.length - 4),
         cardType: _detectCardType(cardNumber),
@@ -2383,7 +2389,7 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
                     style: TextStyle(
                       color: Color(0xFF606A76),
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ),
@@ -2435,10 +2441,9 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
                     validator: (value) {
                       final number =
                           (value ?? '').replaceAll(RegExp(r'\D'), '');
-                      if (number.length < 13 ||
-                          number.length > 19 ||
+                      if (number.length != 16 ||
                           !_passesLuhn(number)) {
-                        return 'Vui lòng kiểm tra số thẻ';
+                        return 'Số thẻ phải đủ 16 chữ số';
                       }
                       return null;
                     },
@@ -2579,6 +2584,7 @@ class _RefundPageState extends State<RefundPage> {
   Future<void> _addBankAccount() async {
     final account = await showModalBottomSheet<_RefundBankAccount>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => const _AddRefundBankAccountSheet(),
@@ -2599,6 +2605,7 @@ class _RefundPageState extends State<RefundPage> {
   void _showRefundInfo() {
     showDialog<void>(
       context: context,
+      animationStyle: AppMotion.dialogAnimationStyle,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.account_balance_wallet_outlined,
             color: _accountBlue),
@@ -2725,6 +2732,7 @@ class _RefundBalanceCard extends StatelessWidget {
               key: const ValueKey('refund_balance_info_button'),
               onTap: () => showDialog<void>(
                 context: context,
+                animationStyle: AppMotion.dialogAnimationStyle,
                 builder: (context) => AlertDialog(
                   icon: const Icon(
                     Icons.account_balance_wallet_outlined,
