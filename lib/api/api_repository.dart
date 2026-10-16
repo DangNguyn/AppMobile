@@ -75,6 +75,10 @@ class ApiRepository {
       _items(await client.get('/api/hotels/$hotelId/amenities'))
           .map(HotelAmenity.fromJson)
           .toList();
+  Future<List<HotelAmenity>> hotelVibes(String hotelId) async =>
+      _items(await client.get('/api/hotels/$hotelId/vibes'))
+          .map(HotelAmenity.fromJson)
+          .toList();
   Future<List<Room>> availableRooms(
           {required String hotelId,
           required String checkIn,

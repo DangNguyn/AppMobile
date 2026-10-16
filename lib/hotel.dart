@@ -540,6 +540,58 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _hotels.then((hotels) {
+                  if (!mounted) return;
+                  Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => AdvancedHotelFilterPage(
+                      location: _location,
+                      initialHotels: hotels,
+                      onHotelLiked: (hotel) => Navigator.of(context).push(
+                        PageRouteBuilder<void>(
+                          transitionDuration: const Duration(milliseconds: 480),
+                          reverseTransitionDuration:
+                              const Duration(milliseconds: 380),
+                          pageBuilder: (_, animation, secondaryAnimation) =>
+                              HotelDetailPage(
+                            selection: widget.selection,
+                            hotelName: hotel.name,
+                            hotelId: hotel.id,
+                          ),
+                          transitionsBuilder:
+                              (_, animation, secondaryAnimation, child) {
+                            final curved = CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeInOutCubic,
+                              reverseCurve: Curves.easeInOutCubic,
+                            );
+                            return SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(1, 0),
+                                end: Offset.zero,
+                              ).animate(curved),
+                              child: child,
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ));
+                }),
+                icon: const Icon(Icons.swipe_rounded),
+                label: const Text('Bộ lọc nâng cao · Vuốt chọn khách sạn'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0E1F38),
+                  side: const BorderSide(color: Color(0xFF0E1F38)),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                ),
+              ),
+            ),
+          ),
           Expanded(
             child: FutureBuilder<List<Hotel>>(
               future: _hotels,
@@ -548,6 +600,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                   return const _HotelSearchSkeleton();
                 }
                 if (snapshot.hasError) {
+                  final error = snapshot.error;
                   return ListView(
                     padding: const EdgeInsets.all(12),
                     children: [
@@ -555,6 +608,22 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                         'Không thể tải danh sách khách sạn theo bộ lọc đã chọn. '
                         'Vui lòng thử lại.',
                         style: TextStyle(color: Colors.black54),
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 8),
+                        Text(error.toString(),
+                            style: const TextStyle(
+                                color: Colors.black45, fontSize: 12)),
+                      ],
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              setState(() => _hotels = _loadHotels()),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Thử lại'),
+                        ),
                       ),
                     ],
                   );
@@ -829,7 +898,6 @@ class _HotelResultCard extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _NearbyPlace {
@@ -844,6 +912,37 @@ class _NearbyPlace {
     required this.category,
     required this.point,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'category': category,
+        'latitude': point.latitude,
+        'longitude': point.longitude,
+      };
+
+  factory _NearbyPlace.fromJson(Map<String, dynamic> json) => _NearbyPlace(
+        id: '${json['id'] ?? ''}',
+        name: '${json['name'] ?? ''}',
+        category: '${json['category'] ?? ''}',
+        point: LatLng(
+          (json['latitude'] as num).toDouble(),
+          (json['longitude'] as num).toDouble(),
+        ),
+      );
+}
+
+String _formatHotelDistance(LatLng hotelPoint, LatLng placePoint) {
+  final meters = const Distance().as(
+    LengthUnit.Meter,
+    hotelPoint,
+    placePoint,
+  );
+  // OSM sometimes gives an amenity inside the hotel the same mapped point.
+  // Report that honestly instead of showing a misleading zero or sub-meter.
+  if (meters == 0) return 'Cùng tọa độ khách sạn';
+  if (meters < 1000) return '${meters.ceil()} m';
+  return '${(meters / 1000).toStringAsFixed(2)} km';
 }
 
 class _HotelResultImage extends StatelessWidget {
@@ -892,38 +991,308 @@ class _HotelResultImage extends StatelessWidget {
 }
 
 class _HotelNearbyPlacesMap extends StatefulWidget {
-  const _HotelNearbyPlacesMap();
+  const _HotelNearbyPlacesMap(
+      {super.key,
+      required this.hotelName,
+      required this.address,
+      required this.city,
+      this.latitude,
+      this.longitude});
+  final String hotelName;
+  final String address;
+  final String city;
+  final double? latitude;
+  final double? longitude;
 
   @override
   State<_HotelNearbyPlacesMap> createState() => _HotelNearbyPlacesMapState();
 }
 
 class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
-  static const _hotelPoint = LatLng(10.8036, 106.7355);
-  static const _hotelAddress =
-      '19A Nguyễn Bá Huân, Thảo Điền, Thủ Đức, Hồ Chí Minh';
-  static const _radiusMeters = 1800;
+  static const _radiusMeters = 5000;
 
   final MapController _mapController = MapController();
+  LatLng? _hotelPoint;
   List<_NearbyPlace> _places = [];
   Object? _loadError;
+  Object? _loadWarning;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadNearbyPlaces();
+    _resolveHotelPointAndLoadPlaces();
   }
 
-  Future<void> _loadNearbyPlaces() async {
+  @override
+  void didUpdateWidget(covariant _HotelNearbyPlacesMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hotelName != widget.hotelName ||
+        oldWidget.address != widget.address ||
+        oldWidget.city != widget.city ||
+        oldWidget.latitude != widget.latitude ||
+        oldWidget.longitude != widget.longitude) {
+      _hotelPoint = null;
+      _places = [];
+      _resolveHotelPointAndLoadPlaces();
+    }
+  }
+
+  String get _hotelPointCacheKey =>
+      'hotel_map_point_v2_${Uri.encodeComponent('${widget.hotelName}|${widget.address}|${widget.city}')}';
+
+  String _placesCacheKey(LatLng point) =>
+      'hotel_nearby_v1_${point.latitude.toStringAsFixed(4)}_${point.longitude.toStringAsFixed(4)}';
+
+  Future<LatLng?> _readHotelPointCache() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final cached = preferences.getString(_hotelPointCacheKey);
+      if (cached == null) return null;
+      final value = jsonDecode(cached);
+      if (value is! Map ||
+          value['latitude'] is! num ||
+          value['longitude'] is! num) {
+        return null;
+      }
+      return LatLng(
+        (value['latitude'] as num).toDouble(),
+        (value['longitude'] as num).toDouble(),
+      );
+    } on Exception {
+      return null;
+    }
+  }
+
+  Future<void> _saveHotelPointCache(LatLng point) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        _hotelPointCacheKey,
+        jsonEncode({'latitude': point.latitude, 'longitude': point.longitude}),
+      );
+    } on Exception {
+      // A cache write must not interrupt map loading.
+    }
+  }
+
+  Future<List<_NearbyPlace>> _readPlacesCache(LatLng point) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final cached = preferences.getString(_placesCacheKey(point));
+      if (cached == null) return const [];
+      final envelope = jsonDecode(cached);
+      if (envelope is! Map || envelope['places'] is! List) return const [];
+      final savedAt = DateTime.tryParse('${envelope['savedAt'] ?? ''}');
+      if (savedAt == null || DateTime.now().difference(savedAt).inDays > 30) {
+        return const [];
+      }
+      return (envelope['places'] as List)
+          .whereType<Map>()
+          .where(
+            (item) => item['latitude'] is num && item['longitude'] is num,
+          )
+          .map((item) => _NearbyPlace.fromJson(Map<String, dynamic>.from(item)))
+          .where((place) => place.name.isNotEmpty)
+          .toList();
+    } on Exception {
+      return const [];
+    }
+  }
+
+  Future<void> _savePlacesCache(
+    LatLng point,
+    List<_NearbyPlace> places,
+  ) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        _placesCacheKey(point),
+        jsonEncode({
+          'savedAt': DateTime.now().toIso8601String(),
+          'places': places.map((place) => place.toJson()).toList(),
+        }),
+      );
+    } on Exception {
+      // A cache write must not interrupt map loading.
+    }
+  }
+
+  Future<LatLng> _geocodeHotelAddress() async {
+    final queries = [
+      [widget.hotelName, widget.address, widget.city, 'Vietnam'],
+      [widget.address, widget.city, 'Vietnam'],
+    ].map((parts) => parts.where((part) => part.trim().isNotEmpty).join(', '));
+
+    for (final query in queries.toSet()) {
+      try {
+        final response = await http.get(
+          Uri.https('nominatim.openstreetmap.org', '/search', {
+            'q': query,
+            'format': 'jsonv2',
+            'limit': '3',
+            'countrycodes': 'vn',
+            'addressdetails': '1',
+          }),
+          headers: const {
+            'User-Agent': 'app_mobile/1.0 (hotel location lookup)',
+          },
+        ).timeout(const Duration(seconds: 15));
+        if (response.statusCode == 200) {
+          final results = jsonDecode(response.body);
+          if (results is List) {
+            for (final raw in results) {
+              if (raw is! Map) continue;
+              final lat = double.tryParse('${raw['lat']}');
+              final lon = double.tryParse('${raw['lon']}');
+              if (lat != null && lon != null) return LatLng(lat, lon);
+            }
+          }
+        }
+      } on Exception {
+        // Try the next address form and then the backup geocoder.
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+
+    final photonQueries = [
+      [widget.hotelName, widget.address, widget.city, 'Vietnam'],
+      [widget.address, widget.city, 'Vietnam'],
+    ].map((parts) => parts.where((part) => part.trim().isNotEmpty).join(', '));
+    for (final query in photonQueries.toSet()) {
+      try {
+        final response = await http.get(
+          Uri.https('photon.komoot.io', '/api/', {
+            'q': query,
+            'limit': '5',
+            'lang': 'en',
+          }),
+          headers: const {
+            'User-Agent': 'app_mobile/1.0 (hotel location lookup)',
+          },
+        ).timeout(const Duration(seconds: 15));
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final features = decoded is Map ? decoded['features'] : null;
+          if (features is List) {
+            for (final feature in features) {
+              if (feature is! Map) continue;
+              final properties = feature['properties'];
+              final geometry = feature['geometry'];
+              final coordinates =
+                  geometry is Map ? geometry['coordinates'] : null;
+              if (properties is! Map ||
+                  coordinates is! List ||
+                  coordinates.length < 2) {
+                continue;
+              }
+              final countryCode =
+                  '${properties['countrycode'] ?? ''}'.toLowerCase();
+              if (countryCode.isNotEmpty && countryCode != 'vn') continue;
+              final lon = coordinates[0];
+              final lat = coordinates[1];
+              if (lat is num && lon is num) {
+                return LatLng(lat.toDouble(), lon.toDouble());
+              }
+            }
+          }
+        }
+      } on Exception {
+        // Report a useful location error below if neither geocoder has a match.
+      }
+    }
+
+    // Backend coordinates can fill missing or incomplete addresses, but only
+    // use them when reverse geocoding confirms they belong to this city.
+    final latitude = widget.latitude;
+    final longitude = widget.longitude;
+    if (latitude != null &&
+        longitude != null &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180 &&
+        widget.city.trim().isNotEmpty) {
+      try {
+        final response = await http.get(
+          Uri.https('nominatim.openstreetmap.org', '/reverse', {
+            'lat': '$latitude',
+            'lon': '$longitude',
+            'format': 'jsonv2',
+            'addressdetails': '1',
+          }),
+          headers: const {
+            'User-Agent': 'app_mobile/1.0 (hotel location lookup)'
+          },
+        ).timeout(const Duration(seconds: 12));
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final address = decoded is Map ? decoded['address'] : null;
+          final placeText =
+              decoded is Map ? '${decoded['display_name'] ?? ''}' : '';
+          final cityText = address is Map
+              ? [
+                  address['city'],
+                  address['town'],
+                  address['municipality'],
+                  address['county'],
+                  address['state']
+                ].where((value) => value != null).join(' ')
+              : '';
+          final expectedCity = widget.city.trim().toLowerCase();
+          if ('$cityText $placeText'.toLowerCase().contains(expectedCity)) {
+            return LatLng(latitude, longitude);
+          }
+        }
+      } on Exception {
+        // An unverified backend coordinate must never be shown as the hotel.
+      }
+    }
+    throw const FormatException(
+      'Không xác định được vị trí từ địa chỉ khách sạn. Hãy kiểm tra địa chỉ và thử lại.',
+    );
+  }
+
+  Future<void> _resolveHotelPointAndLoadPlaces() async {
     setState(() {
-      _isLoading = true;
+      _isLoading = _places.isEmpty;
       _loadError = null;
+      _loadWarning = null;
     });
 
     try {
-      final latitude = _hotelPoint.latitude;
-      final longitude = _hotelPoint.longitude;
+      if (widget.address.trim().isNotEmpty || widget.city.trim().isNotEmpty) {
+        _hotelPoint =
+            await _readHotelPointCache() ?? await _geocodeHotelAddress();
+        await _saveHotelPointCache(_hotelPoint!);
+      } else if (widget.latitude != null &&
+          widget.longitude != null &&
+          widget.latitude! >= -90 &&
+          widget.latitude! <= 90 &&
+          widget.longitude! >= -180 &&
+          widget.longitude! <= 180) {
+        _hotelPoint = LatLng(widget.latitude!, widget.longitude!);
+      } else {
+        throw const FormatException('Hotel address is missing.');
+      }
+      final hotelPoint = _hotelPoint!;
+      if (!mounted) return;
+      final cachedPlaces = await _readPlacesCache(hotelPoint);
+      if (!mounted) return;
+      setState(() {
+        if (cachedPlaces.isNotEmpty) _places = cachedPlaces;
+        _isLoading = _places.isEmpty;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_places.isEmpty) {
+          _mapController.move(hotelPoint, 15);
+        } else {
+          _fitMapToPlaces();
+        }
+      });
+      final latitude = hotelPoint.latitude;
+      final longitude = hotelPoint.longitude;
       final query = '[out:json][timeout:20];'
           '('
           'nwr(around:$_radiusMeters,$latitude,$longitude)'
@@ -931,25 +1300,45 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
           'nwr(around:$_radiusMeters,$latitude,$longitude)'
           '["leisure"~"^(park|garden|nature_reserve)\$"];'
           'nwr(around:$_radiusMeters,$latitude,$longitude)'
-          '["amenity"~"^(arts_centre|theatre|cinema|marketplace)\$"];'
+          '["leisure"~"^(amusement_arcade|water_park|theme_park)\$"];'
+          'nwr(around:$_radiusMeters,$latitude,$longitude)'
+          '["shop"~"^(supermarket|convenience|mall)\$"];'
+          'nwr(around:$_radiusMeters,$latitude,$longitude)'
+          '["amenity"~"^(arts_centre|theatre|cinema|marketplace|cafe|restaurant|fast_food|bar|pub|place_of_worship)\$"];'
           'nwr(around:$_radiusMeters,$latitude,$longitude)'
           '["historic"~"^(archaeological_site|castle|monument|memorial)\$"];'
           ');out center tags;';
-      final response = await http.post(
-        Uri.https('overpass-api.de', '/api/interpreter'),
-        headers: const {
-          'User-Agent': 'app_mobile/1.0 (nearby hotel places map)',
-          'Accept': 'application/json',
-        },
-        body: {'data': query},
-      ).timeout(const Duration(seconds: 25));
-
-      if (response.statusCode != 200) {
-        throw http.ClientException(
-          'Không thể tải địa điểm gần đây (HTTP ${response.statusCode}).',
-        );
+      http.Response? response;
+      Object? endpointError;
+      for (final host in [
+        'overpass-api.de',
+        'overpass.private.coffee',
+        'overpass.openstreetmap.fr',
+      ]) {
+        try {
+          final candidate = await http.post(
+            Uri.https(host, '/api/interpreter'),
+            headers: const {
+              'User-Agent': 'app_mobile/1.0 (nearby hotel places map)',
+              'Accept': 'application/json',
+            },
+            body: {'data': query},
+          ).timeout(const Duration(seconds: 15));
+          if (candidate.statusCode == 200) {
+            response = candidate;
+            break;
+          }
+          endpointError = http.ClientException(
+            'Nearby places returned HTTP ${candidate.statusCode}.',
+          );
+        } on Exception catch (error) {
+          endpointError = error;
+        }
       }
-
+      if (response == null) {
+        throw http.ClientException(
+            'Could not load nearby places: $endpointError');
+      }
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic> || decoded['elements'] is! List) {
         throw const FormatException('Dữ liệu địa điểm không hợp lệ.');
@@ -970,14 +1359,23 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
         final rawLon = item['lon'] ?? center?['lon'];
         if (rawLat is! num || rawLon is! num) continue;
 
-        final name = tags['name']?.toString().trim();
+        final name = (tags['name:vi'] ??
+                tags['name'] ??
+                tags['brand'] ??
+                tags['operator'])
+            ?.toString()
+            .trim();
         if (name == null || name.isEmpty) continue;
 
-        final category = tags['tourism']?.toString() ??
-            tags['leisure']?.toString() ??
-            tags['amenity']?.toString() ??
-            tags['historic']?.toString() ??
-            'Địa điểm tham quan';
+        final category = tags['amenity'] == 'place_of_worship' &&
+                tags['religion']?.toString().toLowerCase() == 'buddhist'
+            ? 'temple'
+            : tags['tourism']?.toString() ??
+                tags['leisure']?.toString() ??
+                tags['shop']?.toString() ??
+                tags['amenity']?.toString() ??
+                tags['historic']?.toString() ??
+                'Địa điểm tham quan';
 
         final place = _NearbyPlace(
           id: '${item['type'] ?? 'object'}/$rawId',
@@ -991,21 +1389,24 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
       final places = uniquePlaces.values.toList()
         ..sort(
           (first, second) => const Distance()
-              .as(LengthUnit.Meter, _hotelPoint, first.point)
+              .as(LengthUnit.Meter, hotelPoint, first.point)
               .compareTo(
                 const Distance().as(
                   LengthUnit.Meter,
-                  _hotelPoint,
+                  hotelPoint,
                   second.point,
                 ),
               ),
         );
+      final nearestPlaces = places.take(80).toList();
 
       if (!mounted) return;
       setState(() {
-        _places = places;
+        _places = nearestPlaces;
         _isLoading = false;
+        _loadWarning = null;
       });
+      await _savePlacesCache(hotelPoint, nearestPlaces);
       _fitMapToPlaces();
     } on http.ClientException catch (error) {
       _showLoadError(error);
@@ -1023,7 +1424,12 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
   void _showLoadError(Object error) {
     if (!mounted) return;
     setState(() {
-      _loadError = error;
+      if (_places.isNotEmpty) {
+        _loadWarning = error;
+        _loadError = null;
+      } else {
+        _loadError = error;
+      }
       _isLoading = false;
     });
   }
@@ -1036,6 +1442,19 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
 
   String _formatPlaceCategory(String category) {
     const labels = {
+      'fast_food': 'Đồ ăn nhanh',
+      'bar': 'Quán bar',
+      'pub': 'Quán pub',
+      'temple': 'Chùa',
+      'amusement_arcade': 'Khu vui chơi',
+      'water_park': 'Công viên nước',
+      'theme_park': 'Công viên giải trí',
+      'supermarket': 'Siêu thị',
+      'convenience': 'Cửa hàng tiện lợi',
+      'mall': 'Trung tâm thương mại',
+      'cafe': 'Quán cà phê',
+      'restaurant': 'Nhà hàng',
+      'place_of_worship': 'Địa điểm tôn giáo',
       'attraction': 'Điểm tham quan',
       'museum': 'Bảo tàng',
       'gallery': 'Phòng trưng bày',
@@ -1057,7 +1476,9 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
 
   void _fitMapToPlaces() {
     if (_places.isEmpty) return;
-    final points = [_hotelPoint, ..._places.map((place) => place.point)];
+    final hotelPoint = _hotelPoint;
+    if (hotelPoint == null) return;
+    final points = [hotelPoint, ..._places.map((place) => place.point)];
     final bounds = LatLngBounds.fromPoints(points);
     _mapController.fitCamera(
       CameraFit.bounds(
@@ -1068,8 +1489,20 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
     );
   }
 
-  double _distanceInKilometers(LatLng point) {
-    return const Distance().as(LengthUnit.Kilometer, _hotelPoint, point);
+  void openExpandedMap() {
+    final hotelPoint = _hotelPoint;
+    if (hotelPoint == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _HotelExpandedMapPage(
+          hotelName: widget.hotelName,
+          address: widget.address,
+          hotelPoint: hotelPoint,
+          places: List.unmodifiable(_places),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1077,88 +1510,104 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          _hotelAddress,
-          style: TextStyle(
-            color: Color(0xFF59636D),
-            fontSize: 14,
-            height: 1.45,
-          ),
-        ),
-        const SizedBox(height: 12),
         ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: SizedBox(
             height: 230,
-            child: FlutterMap(
-              mapController: _mapController,
-              options: const MapOptions(
-                initialCenter: _hotelPoint,
-                initialZoom: 14.5,
-                minZoom: 11,
-                maxZoom: 18,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'app_mobile',
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _hotelPoint,
-                      width: 44,
-                      height: 44,
-                      child: const _NearbyMapMarker(
-                        icon: Icons.hotel_rounded,
-                        color: Color(0xFF1B6EEB),
-                      ),
+            child: _hotelPoint == null
+                ? Center(
+                    child: _isLoading
+                        ? const CircularProgressIndicator(
+                            color: Color(0xFF1674C5),
+                          )
+                        : const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text(
+                              'Chưa xác định được vị trí từ địa chỉ khách sạn.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Color(0xFF59636D)),
+                            ),
+                          ),
+                  )
+                : FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: _hotelPoint!,
+                      initialZoom: 14.5,
+                      minZoom: 11,
+                      maxZoom: 18,
                     ),
-                    for (final place in _places)
-                      Marker(
-                        point: place.point,
-                        width: 38,
-                        height: 38,
-                        child: const _NearbyMapMarker(
-                          icon: Icons.local_activity_rounded,
-                          color: Color(0xFFE56A35),
-                          small: true,
-                        ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'app_mobile',
                       ),
-                  ],
-                ),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.88),
-                        borderRadius: BorderRadius.circular(4),
+                      MarkerLayer(
+                        markers: [
+                          if (_hotelPoint != null)
+                            Marker(
+                              point: _hotelPoint!,
+                              width: 44,
+                              height: 44,
+                              child: const _NearbyMapMarker(
+                                icon: Icons.hotel_rounded,
+                                color: Color(0xFF1B6EEB),
+                              ),
+                            ),
+                          for (final place in _places)
+                            Marker(
+                              point: place.point,
+                              width: 38,
+                              height: 38,
+                              child: const _NearbyMapMarker(
+                                icon: Icons.local_activity_rounded,
+                                color: Color(0xFFE56A35),
+                                small: true,
+                              ),
+                            ),
+                        ],
                       ),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 2,
-                        ),
-                        child: Text(
-                          '© OpenStreetMap contributors',
-                          style: TextStyle(
-                            color: Color(0xFF394550),
-                            fontSize: 9,
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              child: Text(
+                                '© OpenStreetMap contributors',
+                                style: TextStyle(
+                                  color: Color(0xFF394550),
+                                  fontSize: 9,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ),
-              ],
-            ),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _hotelPoint == null ? null : openExpandedMap,
+            icon: const Icon(Icons.open_in_full_rounded, size: 18),
+            label: const Text('Mở rộng bản đồ'),
           ),
         ),
         const SizedBox(height: 8),
         const Text(
-          'Vị trí khách sạn được đánh dấu màu xanh; các địa điểm gần đó màu cam. Vị trí ghim khách sạn là ước tính theo khu vực Thảo Điền.',
+          'Vị trí khách sạn màu xanh, địa điểm gần đó màu cam. Khoảng cách tính theo đường thẳng từ tọa độ bản đồ; dưới 1 km hiển thị bằng mét.',
           style: TextStyle(
             color: Color(0xFF7D858D),
             fontSize: 11,
@@ -1175,6 +1624,14 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
           ),
         ),
         const SizedBox(height: 8),
+        if (_loadWarning != null)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Mạng đang không ổn định; đang hiển thị danh sách địa điểm đã lưu gần đây.',
+              style: TextStyle(color: Color(0xFF8A6710), fontSize: 12),
+            ),
+          ),
         if (_isLoading)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 18),
@@ -1188,7 +1645,7 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Text(
-              'Chưa tìm thấy địa điểm có dữ liệu trên bản đồ trong bán kính 1,8 km.',
+              'Chưa tìm thấy địa điểm có dữ liệu trên bản đồ trong bán kính 5 km.',
               style: TextStyle(
                 color: Color(0xFF59636D),
                 fontSize: 13,
@@ -1223,7 +1680,7 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
           ),
           const SizedBox(height: 8),
           TextButton.icon(
-            onPressed: _loadNearbyPlaces,
+            onPressed: _resolveHotelPointAndLoadPlaces,
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('Thử lại'),
           ),
@@ -1233,7 +1690,8 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
   }
 
   Widget _buildPlaceTile(_NearbyPlace place) {
-    final distance = _distanceInKilometers(place.point);
+    final hotelPoint = _hotelPoint;
+    if (hotelPoint == null) return const SizedBox.shrink();
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const CircleAvatar(
@@ -1250,14 +1708,176 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
           fontWeight: FontWeight.w600,
         ),
       ),
-      subtitle: Text(place.category),
-      trailing: Text(
-        distance < 1
-            ? '${(distance * 1000).round()} m'
-            : '${distance.toStringAsFixed(1)} km',
-        style: const TextStyle(color: Color(0xFF6D747B), fontSize: 12),
+      subtitle: Text(
+        '${place.category} · cách khách sạn ${_formatHotelDistance(hotelPoint, place.point)}',
       ),
+      trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () => _mapController.move(place.point, 16),
+    );
+  }
+}
+
+class _HotelExpandedMapPage extends StatefulWidget {
+  const _HotelExpandedMapPage({
+    required this.hotelName,
+    required this.address,
+    required this.hotelPoint,
+    required this.places,
+  });
+
+  final String hotelName;
+  final String address;
+  final LatLng hotelPoint;
+  final List<_NearbyPlace> places;
+
+  @override
+  State<_HotelExpandedMapPage> createState() => _HotelExpandedMapPageState();
+}
+
+class _HotelExpandedMapPageState extends State<_HotelExpandedMapPage> {
+  final MapController _controller = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.places.isEmpty) return;
+      _controller.fitCamera(
+        CameraFit.bounds(
+          bounds: LatLngBounds.fromPoints([
+            widget.hotelPoint,
+            ...widget.places.map((place) => place.point),
+          ]),
+          padding: const EdgeInsets.all(48),
+          maxZoom: 15,
+        ),
+      );
+    });
+  }
+
+  String _distanceLabel(LatLng point) {
+    return _formatHotelDistance(widget.hotelPoint, point);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.hotelName,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+      body: Column(
+        children: [
+          if (widget.address.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  widget.address,
+                  style: const TextStyle(color: Color(0xFF59636D)),
+                ),
+              ),
+            ),
+          Expanded(
+            flex: 6,
+            child: FlutterMap(
+              mapController: _controller,
+              options: MapOptions(
+                initialCenter: widget.hotelPoint,
+                initialZoom: 14,
+                minZoom: 5,
+                maxZoom: 19,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'app_mobile',
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: widget.hotelPoint,
+                      width: 48,
+                      height: 48,
+                      child: const _NearbyMapMarker(
+                        icon: Icons.hotel_rounded,
+                        color: Color(0xFF1B6EEB),
+                      ),
+                    ),
+                    for (final place in widget.places)
+                      Marker(
+                        point: place.point,
+                        width: 40,
+                        height: 40,
+                        child: const _NearbyMapMarker(
+                          icon: Icons.local_activity_rounded,
+                          color: Color(0xFFE56A35),
+                          small: true,
+                        ),
+                      ),
+                  ],
+                ),
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Container(
+                    margin: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 3,
+                    ),
+                    color: Colors.white.withValues(alpha: 0.9),
+                    child: const Text(
+                      '© OpenStreetMap contributors',
+                      style: TextStyle(fontSize: 10),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Địa điểm xung quanh · khoảng cách ước tính theo đường thẳng',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: widget.places.isEmpty
+                ? const Center(
+                    child: Text('Chưa có địa điểm xung quanh để hiển thị.'),
+                  )
+                : ListView.builder(
+                    itemCount: widget.places.length,
+                    itemBuilder: (context, index) {
+                      final place = widget.places[index];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(
+                          Icons.local_activity_rounded,
+                          color: Color(0xFFE56A35),
+                        ),
+                        title: Text(place.name),
+                        subtitle: Text(place.category),
+                        trailing: Text(_distanceLabel(place.point)),
+                        onTap: () => _controller.move(place.point, 16),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1275,14 +1895,17 @@ class _NearbyMapMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Icon(
-      icon,
-      color: color,
-      size: small ? 28 : 36,
-      shadows: const [
-        Shadow(color: Colors.white, blurRadius: 4),
-        Shadow(color: Colors.white, blurRadius: 8),
-      ],
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x55000000), blurRadius: 5, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Icon(icon, color: Colors.white, size: small ? 18 : 22),
     );
   }
 }

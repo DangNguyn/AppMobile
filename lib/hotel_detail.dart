@@ -70,6 +70,9 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
   List<String> _hotelImages = const [];
   List<HotelAmenity> _amenities = const [];
   final Map<String, Future<List<String>>> _roomImageRequests = {};
+  final GlobalKey<_HotelNearbyPlacesMapState> _hotelNearbyMapKey =
+      GlobalKey<_HotelNearbyPlacesMapState>();
+  final ScrollController _detailScrollController = ScrollController();
   final _overviewKey = GlobalKey();
   final _roomsKey = GlobalKey();
   final _locationKey = GlobalKey();
@@ -143,13 +146,20 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
     final sectionKeys = [_overviewKey, _roomsKey, _locationKey, _policiesKey];
     final targetContext = sectionKeys[index].currentContext;
     if (targetContext == null) return;
-
     setState(() => _selectedSectionIndex = index);
-    Scrollable.ensureVisible(
-      targetContext,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeInOut,
-      alignment: -0.08,
+    final renderObject = targetContext.findRenderObject();
+    if (renderObject == null || !_detailScrollController.hasClients) return;
+    final viewport = RenderAbstractViewport.maybeOf(renderObject);
+    if (viewport == null) return;
+    final position = _detailScrollController.position;
+    final sectionTop = viewport.getOffsetToReveal(renderObject, 0).offset;
+    final targetOffset = (sectionTop - 52)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    _detailScrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeInOutCubic,
     );
   }
 
@@ -271,7 +281,14 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                   style: detailStyle,
                 ),
                 const SizedBox(height: 12),
-                const _HotelNearbyPlacesMap(),
+                _HotelNearbyPlacesMap(
+                  key: _hotelNearbyMapKey,
+                  hotelName: _hotel?.name ?? widget.hotelName,
+                  address: _hotel?.address ?? '',
+                  city: _hotel?.city ?? '',
+                  latitude: _hotel?.latitude,
+                  longitude: _hotel?.longitude,
+                ),
               ],
             ),
           ),
@@ -391,6 +408,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
   @override
   void dispose() {
     widget.selection.removeListener(_handleSelectionChanged);
+    _detailScrollController.dispose();
     super.dispose();
   }
 
@@ -1053,13 +1071,13 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 6),
-                                const Tooltip(
-                                  message: 'Bản đồ',
-                                  child: Icon(
-                                    Icons.map_outlined,
-                                    color: Color(0xFF1674C5),
-                                    size: 26,
-                                  ),
+                                IconButton(
+                                  tooltip: 'Mở bản đồ lớn',
+                                  onPressed: () => _hotelNearbyMapKey
+                                      .currentState
+                                      ?.openExpandedMap(),
+                                  icon: const Icon(Icons.map_outlined,
+                                      color: Color(0xFF1674C5), size: 26),
                                 ),
                               ],
                             ),
@@ -1149,6 +1167,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
           NotificationListener<ScrollNotification>(
             onNotification: _handleScrollNotification,
             child: CustomScrollView(
+              controller: _detailScrollController,
               slivers: [
                 SliverToBoxAdapter(
                   child: _buildHotelHero()
