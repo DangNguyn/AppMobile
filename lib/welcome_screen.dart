@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'notification_screen.dart';
 import 'onboarding_widgets.dart';
 import 'user_service.dart';
+import 'ui_motion.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key, required this.homeBuilder});
@@ -80,7 +81,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           onChanged: (value) => setState(() => _language = value),
         ),
       ],
-    ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.04);
+    ).animate().fadeIn(duration: AppMotion.entranceDuration).slideY(
+          begin: 0.04,
+          duration: AppMotion.entranceDuration,
+        );
   }
 }
 

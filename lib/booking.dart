@@ -13,7 +13,33 @@ class _BookingPageState extends State<BookingPage> {
   @override
   void initState() {
     super.initState();
-    _bookings = apiRepository.bookings();
+    _bookings = _loadBookings();
+  }
+
+  Future<List<Booking>> _loadBookings() async {
+    final bookings = await apiRepository.bookings();
+    return Future.wait(bookings.map((booking) async {
+      final results = await Future.wait([
+        apiRepository.booking(booking.id),
+        apiRepository.hotel(booking.hotelId),
+        apiRepository.bookingGuests(booking.id),
+      ]);
+      final detail = results[0] as Booking;
+      final hotel = results[1] as Hotel;
+      final guests = results[2] as List<BookingGuest>;
+      String? roomTypeName;
+      final roomTypeId =
+          detail.rooms.isEmpty ? null : detail.rooms.first.roomTypeId;
+      if (roomTypeId != null) {
+        roomTypeName = (await apiRepository.roomType(roomTypeId)).name;
+      }
+      return booking.copyWith(
+        rooms: detail.rooms,
+        hotelName: hotel.name,
+        roomTypeName: roomTypeName,
+        guest: guests.isEmpty ? null : guests.first,
+      );
+    }));
   }
 
   @override
@@ -137,7 +163,7 @@ class _BookingPageState extends State<BookingPage> {
             future: _bookings,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(child: AppLoadingIndicator());
               }
               if (snapshot.hasError) {
                 return Center(
@@ -146,7 +172,8 @@ class _BookingPageState extends State<BookingPage> {
                     children: [
                       Text('${snapshot.error}'),
                       TextButton(
-                        onPressed: () => setState(() => _bookings = apiRepository.bookings()),
+                        onPressed: () =>
+                            setState(() => _bookings = _loadBookings()),
                         child: const Text('Thử lại'),
                       ),
                     ],
@@ -163,12 +190,12 @@ class _BookingPageState extends State<BookingPage> {
                 separatorBuilder: (_, index) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
                   final booking = bookings[index];
-                  return Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.hotel_outlined),
-                      title: Text(booking.bookingCode ?? booking.id),
-                      subtitle: Text('${booking.checkIn} - ${booking.checkOut}'),
-                      trailing: Text(booking.status),
+                  return _BookingCard(
+                    booking: booking,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => BookingDetailPage(booking: booking),
+                      ),
                     ),
                   );
                 },
@@ -179,6 +206,168 @@ class _BookingPageState extends State<BookingPage> {
       ],
     );
   }
+}
+
+class _BookingCard extends StatelessWidget {
+  const _BookingCard({required this.booking, required this.onTap});
+
+  final Booking booking;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _bookingStatus(booking.status);
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.hotel_outlined, color: Color(0xFF1674C5)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      booking.hotelName ?? 'Khách sạn',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  _StatusBadge(status: status),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(booking.roomTypeName ?? 'Phòng đã đặt'),
+              const SizedBox(height: 6),
+              Text('${booking.checkIn} - ${booking.checkOut}'),
+              const SizedBox(height: 6),
+              Text(
+                'Tổng thanh toán: ${_formatBookingMoney(booking.totalAmount)}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              if (booking.guest != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                    '${booking.guest!.fullName} · ${booking.guest!.phone ?? ''}'),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class BookingDetailPage extends StatelessWidget {
+  const BookingDetailPage({super.key, required this.booking});
+
+  final Booking booking;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _bookingStatus(booking.status);
+    final guest = booking.guest;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Chi tiết đơn đặt phòng')),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Text(booking.hotelName ?? 'Khách sạn',
+              style:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(booking.roomTypeName ?? 'Phòng đã đặt'),
+          const Divider(height: 28),
+          _detailLine('Mã đặt phòng', booking.bookingCode ?? booking.id),
+          _detailLine('Lịch trình', '${booking.checkIn} - ${booking.checkOut}'),
+          _detailLine(
+              'Tổng thanh toán', _formatBookingMoney(booking.totalAmount)),
+          _detailLine('Trạng thái', '${status.icon} ${status.label}'),
+          if (guest != null) ...[
+            const Divider(height: 28),
+            const Text('Thông tin người đặt',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            _detailLine('Họ tên', guest.fullName),
+            _detailLine('Số điện thoại', guest.phone ?? 'Chưa cập nhật'),
+            _detailLine('Email', guest.email ?? 'Chưa cập nhật'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _detailLine(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+                width: 135,
+                child:
+                    Text(label, style: const TextStyle(color: Colors.black54))),
+            Expanded(
+                child: Text(value,
+                    style: const TextStyle(fontWeight: FontWeight.w600))),
+          ],
+        ),
+      );
+}
+
+class _BookingStatus {
+  const _BookingStatus(this.label, this.icon, this.color);
+  final String label;
+  final String icon;
+  final Color color;
+}
+
+_BookingStatus _bookingStatus(String value) {
+  switch (value.toLowerCase()) {
+    case 'confirmed':
+      return const _BookingStatus('Đã xác nhận', '✓', Color(0xFF168A55));
+    case 'cancelled':
+      return const _BookingStatus('Đã hủy', '×', Color(0xFFC0392B));
+    case 'completed':
+      return const _BookingStatus('Hoàn tất', '✓', Color(0xFF1674C5));
+    default:
+      return const _BookingStatus('Chờ xác nhận', '⏳', Color(0xFFE08A00));
+  }
+}
+
+String _formatBookingMoney(double? value) {
+  final digits = (value ?? 0).round().toString();
+  final formatted = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) formatted.write('.');
+    formatted.write(digits[i]);
+  }
+  return '$formatted ₫';
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status});
+  final _BookingStatus status;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: status.color.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          child: Text('${status.icon} ${status.label}',
+              style: TextStyle(
+                  color: status.color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700)),
+        ),
+      );
 }
 
 class _BookingSectionHeading extends StatelessWidget {
