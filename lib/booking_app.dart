@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -11,11 +12,13 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:lottie/lottie.dart' hide Marker;
 import 'package:shimmer/shimmer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
 import 'destination_images.dart';
+import 'advanced_hotel_filter.dart';
 import 'voucher_storage_service.dart';
 import 'ui_motion.dart';
 import 'account_page.dart';
