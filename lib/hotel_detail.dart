@@ -61,6 +61,61 @@ class _RoomTypePreviewImage extends StatelessWidget {
   }
 }
 
+class _PolicyNotice extends StatelessWidget {
+  const _PolicyNotice();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+            color: const Color(0xFFFFF9DB),
+            border: Border.all(color: const Color(0xFFFFD54F)),
+            borderRadius: BorderRadius.circular(12)),
+        child:
+            const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.warning_amber_rounded, color: Color(0xFFE7B900)),
+          SizedBox(width: 8),
+          Expanded(
+              child: Text(
+                  'Vui lòng lưu ý thời gian nhận phòng và trả phòng của khách sạn.',
+                  style: TextStyle(
+                      color: Color(0xFF9A5B12), fontSize: 13, height: 1.4))),
+        ]),
+      );
+}
+
+class _PolicyRow extends StatelessWidget {
+  const _PolicyRow(
+      {required this.icon, required this.title, required this.details});
+  final IconData icon;
+  final String title;
+  final List<String> details;
+
+  @override
+  Widget build(BuildContext context) =>
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: const Color(0xFF1674C5), size: 22),
+        const SizedBox(width: 10),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: const TextStyle(
+                  color: Color(0xFF19232D),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          for (final detail in details)
+            Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text(detail,
+                    style: const TextStyle(
+                        color: Color(0xFF59636D), fontSize: 13, height: 1.4))),
+        ])),
+      ]);
+}
+
 class _HotelDetailPageState extends State<HotelDetailPage> {
   bool _isSaved = false;
   bool _isSectionBarVisible = false;
@@ -79,6 +134,39 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
   final _policiesKey = GlobalKey();
 
   static const _sectionLabels = ['Tổng quan', 'Phòng', 'Vị trí', 'Chính sách'];
+
+  // These are clearly labeled demo reviews until verified guest reviews are
+  // available from the reviews API.
+  static const _sampleReviews = <({String name, String comment, int score})>[
+    (
+      name: 'Minh Anh',
+      comment:
+          'Phòng sạch sẽ, giường rất thoải mái. Nhân viên hỗ trợ nhiệt tình và thủ tục nhận phòng nhanh chóng.',
+      score: 10
+    ),
+    (
+      name: 'Quốc Bảo',
+      comment:
+          'Vị trí thuận tiện, không gian yên tĩnh. Bữa sáng ngon và có nhiều lựa chọn.',
+      score: 9
+    ),
+    (
+      name: 'Thu Hà',
+      comment:
+          'Khách sạn gọn gàng, nhân viên thân thiện. Tôi có trải nghiệm nghỉ ngơi rất dễ chịu.',
+      score: 10
+    ),
+    (
+      name: 'Gia Huy',
+      comment:
+          'Phòng đúng như mô tả, tiện nghi đầy đủ. Sẽ cân nhắc quay lại trong chuyến đi sau.',
+      score: 9
+    ),
+  ];
+
+  static double get _sampleReviewScore =>
+      _sampleReviews.fold<int>(0, (sum, review) => sum + review.score) /
+      _sampleReviews.length;
 
   static const _hotelAmenities = <(IconData, String)>[
     (Icons.support_agent_outlined, 'Lễ tân 24h'),
@@ -158,7 +246,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
         .toDouble();
     _detailScrollController.animateTo(
       targetOffset,
-      duration: const Duration(milliseconds: 420),
+      duration: AppMotion.pageDuration,
       curve: Curves.easeInOutCubic,
     );
   }
@@ -262,6 +350,12 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             ),
           ),
           _buildHotelSection(
+            key: GlobalKey(),
+            title: 'Đánh giá của khách',
+            emphasize: true,
+            child: _buildGuestReviews(),
+          ),
+          _buildHotelSection(
             key: _roomsKey,
             title: 'Phòng',
             emphasize: true,
@@ -296,22 +390,78 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             key: _policiesKey,
             title: 'Chính sách',
             emphasize: true,
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Nhận phòng: từ 14:00', style: detailStyle),
-                SizedBox(height: 8),
-                Text('Trả phòng: trước 12:00', style: detailStyle),
-                SizedBox(height: 8),
-                Text(
-                  'Vui lòng xuất trình giấy tờ tùy thân khi nhận phòng.',
-                  style: detailStyle,
-                ),
+                _PolicyNotice(),
+                SizedBox(height: 14),
+                _PolicyRow(
+                    icon: Icons.access_time,
+                    title: 'Giờ nhận phòng/trả phòng',
+                    details: [
+                      'Nhận phòng: từ 14:00',
+                      'Trả phòng: trước 12:00'
+                    ]),
+                SizedBox(height: 14),
+                _PolicyRow(
+                    icon: Icons.badge_outlined,
+                    title: 'Giấy tờ bắt buộc',
+                    details: [
+                      'Vui lòng xuất trình giấy tờ tùy thân khi nhận phòng.'
+                    ]),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildGuestReviews() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Text('${_sampleReviewScore.toStringAsFixed(1)}/10',
+              style: const TextStyle(
+                  color: Color(0xFF1674C5),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(width: 10),
+          Text('${_sampleReviews.length} đánh giá mẫu',
+              style: const TextStyle(color: Color(0xFF6D747B), fontSize: 13)),
+        ]),
+        const SizedBox(height: 4),
+        const Text('Điểm trung bình được tính từ các đánh giá mẫu bên dưới.',
+            style: TextStyle(color: Color(0xFF6D747B), fontSize: 12)),
+        const SizedBox(height: 12),
+        for (final review in _sampleReviews)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+                color: const Color(0xFFF7F9FC),
+                borderRadius: BorderRadius.circular(12)),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                    child: Text(review.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF19232D)))),
+                Text('${review.score}.0/10',
+                    style: const TextStyle(
+                        color: Color(0xFF1674C5), fontWeight: FontWeight.w700))
+              ]),
+              const SizedBox(height: 6),
+              Text(review.comment,
+                  style: const TextStyle(
+                      color: Color(0xFF59636D), fontSize: 13, height: 1.4)),
+            ]),
+          ),
+      ],
     );
   }
 
@@ -369,7 +519,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                               style: TextStyle(
                                 color: Color(0xFF1674C5),
                                 fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w400,
                               ),
                             ),
                           ],
@@ -419,6 +569,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
   Future<void> _showHotelAmenities() {
     return showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
@@ -502,7 +653,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                                 style: const TextStyle(
                                   color: Color(0xFF26323D),
                                   fontSize: 13,
-                                  fontWeight: FontWeight.w500,
+                                  fontWeight: FontWeight.w300,
                                 ),
                               ),
                             ),
@@ -549,7 +700,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                             style: const TextStyle(
                               color: Color(0xFF26323D),
                               fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.w300,
                             ),
                           ),
                         ],
@@ -601,6 +752,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
   Future<void> _pickGuestOptions() async {
     final result = await showModalBottomSheet<Map<String, int>>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -689,7 +841,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
       barrierDismissible: true,
       barrierLabel: 'Đóng tùy chọn tìm kiếm',
       barrierColor: Colors.black26,
-      transitionDuration: const Duration(milliseconds: 250),
+      transitionDuration: AppMotion.pageDuration,
       pageBuilder: (dialogContext, animation, secondaryAnimation) {
         final panelHeight = MediaQuery.sizeOf(dialogContext).height * 0.4;
         return SafeArea(
@@ -791,7 +943,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             style: const TextStyle(
               fontSize: 11,
               height: 1,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w300,
             ),
           ),
         ),
@@ -902,7 +1054,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     for (var index = 0;
-                        index < (_hotel?.starRating?.round() ?? 5);
+                        index < (_hotel?.starRating?.round() ?? 5).clamp(0, 5);
                         index++)
                       const Icon(
                         Icons.star_rounded,
@@ -937,7 +1089,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                         style: TextStyle(
                           color: Color(0xFF2674B8),
                           fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w300,
                         ),
                       ),
                     ),
@@ -981,12 +1133,12 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                                 color: const Color(0xFFE7EBF0),
                               ),
                             ),
-                            child: const Column(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
-                                  '8.7/10',
+                                  '${_sampleReviewScore.toStringAsFixed(1)}/10',
                                   maxLines: 1,
                                   style: TextStyle(
                                     color: Color(0xFF1674C5),
@@ -1002,12 +1154,12 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                                   style: TextStyle(
                                     color: Color(0xFF1674C5),
                                     fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w400,
                                   ),
                                 ),
                                 SizedBox(height: 2),
                                 Text(
-                                  '36 đánh giá',
+                                  '${_sampleReviews.length} đánh giá mẫu',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -1172,20 +1324,29 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                 SliverToBoxAdapter(
                   child: _buildHotelHero()
                       .animate()
-                      .fadeIn(duration: 500.ms)
-                      .slideY(begin: 0.06),
+                      .fadeIn(duration: AppMotion.entranceDuration)
+                      .slideY(
+                        begin: 0.04,
+                        duration: AppMotion.entranceDuration,
+                      ),
                 ),
                 SliverToBoxAdapter(
                   child: _buildHotelSections()
                       .animate()
-                      .fadeIn(delay: 120.ms, duration: 500.ms)
-                      .slideY(begin: 0.05),
+                      .fadeIn(
+                        delay: AppMotion.entranceStagger,
+                        duration: AppMotion.entranceDuration,
+                      )
+                      .slideY(
+                        begin: 0.04,
+                        duration: AppMotion.entranceDuration,
+                      ),
                 ),
               ],
             ),
           ),
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 240),
+            duration: AppMotion.sectionDuration,
             curve: Curves.easeOutCubic,
             top: _isSectionBarVisible ? 0 : -52,
             left: 0,

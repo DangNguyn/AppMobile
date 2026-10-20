@@ -208,6 +208,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
   Future<void> _pickGuests() async {
     final result = await showModalBottomSheet<Map<String, int>>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -278,6 +279,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
   Future<String?> _pickDestination(String selectedLocation) {
     return showModalBottomSheet<String>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -365,6 +367,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
   Future<void> _showSearchOptions() {
     return showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
@@ -524,7 +527,7 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w300,
                     ),
                   ),
                 ],
@@ -644,8 +647,9 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
                       hotelId: hotel.id,
                       name: hotel.name,
                       location: hotel.city.isEmpty ? _location : hotel.city,
-                      rating: hotel.starRating ?? 0,
-                      reviewCount: 0,
+                      address: hotel.address,
+                      description: hotel.description,
+                      rating: hotel.starRating ?? 5,
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => HotelDetailPage(
@@ -779,13 +783,14 @@ class _HotelSearchEmptyState extends StatelessWidget {
   }
 }
 
-class _HotelResultCard extends StatelessWidget {
+class _HotelResultCard extends StatefulWidget {
   final int number;
   final String hotelId;
   final String name;
   final String location;
+  final String address;
+  final String description;
   final double rating;
-  final int reviewCount;
   final VoidCallback onTap;
 
   const _HotelResultCard({
@@ -793,10 +798,149 @@ class _HotelResultCard extends StatelessWidget {
     required this.hotelId,
     required this.name,
     required this.location,
+    required this.address,
+    required this.description,
     required this.rating,
-    required this.reviewCount,
     required this.onTap,
   });
+
+  @override
+  State<_HotelResultCard> createState() => _HotelResultCardState();
+}
+
+class _HotelResultCardState extends State<_HotelResultCard> {
+  static const _sampleReviewCount = 4;
+
+  late Future<List<HotelAmenity>> _amenities;
+  late Future<List<Review>> _reviews;
+  late Future<List<RoomType>> _roomTypes;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHotelDetails();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HotelResultCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hotelId != widget.hotelId) _loadHotelDetails();
+  }
+
+  void _loadHotelDetails() {
+    _amenities = apiRepository.hotelAmenities(widget.hotelId);
+    _reviews = apiRepository.reviews(widget.hotelId);
+    _roomTypes = apiRepository.roomTypes(widget.hotelId);
+  }
+
+  String _formatPrice(num amount) {
+    final digits = amount.round().toString();
+    final formatted = StringBuffer();
+    for (var index = 0; index < digits.length; index++) {
+      if (index > 0 && (digits.length - index) % 3 == 0) {
+        formatted.write('.');
+      }
+      formatted.write(digits[index]);
+    }
+    return '${formatted.toString()} ₫';
+  }
+
+  Widget _buildPrice() {
+    return FutureBuilder<List<RoomType>>(
+      future: _roomTypes,
+      builder: (context, snapshot) {
+        final prices = (snapshot.data ?? const <RoomType>[])
+            .map((roomType) => roomType.basePrice)
+            .where((price) => price > 0)
+            .toList();
+        if (prices.isEmpty) {
+          return const Text(
+            'Chưa có giá phòng',
+            style: TextStyle(
+              color: Color(0xFF7A838C),
+              fontSize: 11,
+              fontWeight: FontWeight.w400,
+            ),
+          );
+        }
+
+        prices.sort();
+        final price = Text(
+          '${_formatPrice(prices.reduce((a, b) => a < b ? a : b))}/đêm',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Color(0xFFD32F2F),
+            fontSize: 20,
+            height: 1.1,
+            fontWeight: FontWeight.w800,
+          ),
+        );
+        if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+          return price;
+        }
+        return price
+            .animate(onPlay: (controller) => controller.repeat(reverse: true))
+            .scale(
+              begin: const Offset(1, 1),
+              end: const Offset(1.035, 1.035),
+              duration: const Duration(milliseconds: 1100),
+              curve: Curves.easeInOut,
+            );
+      },
+    );
+  }
+
+  Widget _buildAmenities() {
+    return SizedBox(
+      height: 26,
+      child: FutureBuilder<List<HotelAmenity>>(
+        future: _amenities,
+        builder: (context, snapshot) {
+          final amenities = snapshot.data ?? const <HotelAmenity>[];
+          if (amenities.isEmpty) return const SizedBox.shrink();
+          final visibleAmenities = amenities.take(3).toList();
+          return ListView(
+            scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
+            children: [
+              for (final amenity in visibleAmenities)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: Color(0xFF238A70),
+                        size: 15,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        amenity.name,
+                        style: const TextStyle(
+                          color: Color(0xFF52616C),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (amenities.length > visibleAmenities.length)
+                Text(
+                  '+${amenities.length - visibleAmenities.length}',
+                  style: const TextStyle(
+                    color: Color(0xFF52616C),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -806,22 +950,22 @@ class _HotelResultCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: Container(
           padding: const EdgeInsets.all(12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _HotelResultImage(hotelId: hotelId, number: number),
-              const SizedBox(width: 14),
+              _HotelResultImage(hotelId: widget.hotelId, number: widget.number),
+              const SizedBox(width: 12),
               Expanded(
                 child: SizedBox(
-                  height: 142,
+                  height: 250,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        name,
+                        widget.name,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -830,9 +974,9 @@ class _HotelResultCard extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 3),
                       Text(
-                        location,
+                        widget.location,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -840,53 +984,71 @@ class _HotelResultCard extends StatelessWidget {
                           fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      if (widget.address.trim().isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          widget.address,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF7A838C),
+                            fontSize: 11,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 5),
                       Row(
                         children: [
-                          const Icon(
-                            Icons.star_rounded,
-                            color: Color(0xFFFFC928),
-                            size: 18,
-                          ),
-                          const Icon(
-                            Icons.star_rounded,
-                            color: Color(0xFFFFC928),
-                            size: 18,
-                          ),
-                          const Icon(
-                            Icons.star_rounded,
-                            color: Color(0xFFFFC928),
-                            size: 18,
-                          ),
-                          const SizedBox(width: 6),
+                          for (var index = 0;
+                              index < widget.rating.round().clamp(0, 5);
+                              index++)
+                            const Icon(
+                              Icons.star_rounded,
+                              color: Color(0xFFFFC928),
+                              size: 17,
+                            ),
+                          const SizedBox(width: 4),
                           Text(
-                            '${rating.toStringAsFixed(1)}/10',
+                            widget.rating.toStringAsFixed(1),
                             style: const TextStyle(
                               color: Color(0xFF1688C7),
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
                       ),
-                      const Spacer(),
+                      const SizedBox(height: 4),
+                      _buildAmenities(),
+                      const SizedBox(height: 6),
                       Text(
-                        '$reviewCount đánh giá',
+                        widget.description.trim().isNotEmpty
+                            ? widget.description.trim()
+                            : 'Khám phá không gian nghỉ dưỡng thoải mái với các tiện ích phù hợp cho chuyến đi của bạn.',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF7A838C),
-                          fontSize: 12,
+                          color: Color(0xFF68737D),
+                          fontSize: 11,
+                          height: 1.25,
                         ),
                       ),
-                      const SizedBox(height: 5),
-                      const Text(
-                        'Giá phòng sẽ hiển thị tại đây',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Color(0xFFE56A35),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      const SizedBox(height: 7),
+                      FutureBuilder<List<Review>>(
+                        future: _reviews,
+                        builder: (context, snapshot) => Text(
+                          '${_sampleReviewCount + (snapshot.data?.length ?? 0)} đánh giá',
+                          style: const TextStyle(
+                            color: Color(0xFF7A838C),
+                            fontSize: 11,
+                          ),
                         ),
+                      ),
+                      const Spacer(),
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: _buildPrice(),
                       ),
                     ],
                   ),
@@ -962,8 +1124,8 @@ class _HotelResultImage extends StatelessWidget {
             ? const [Color(0xFFB8D7E8), Color(0xFF557D91)]
             : const [Color(0xFFE9D9C2), Color(0xFF9D7856)];
         return Container(
-          width: 112,
-          height: 142,
+          width: 142,
+          height: 250,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -1636,7 +1798,7 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 18),
             child: Center(
-              child: CircularProgressIndicator(color: Color(0xFF1674C5)),
+              child: AppLoadingIndicator(size: 24),
             ),
           )
         else if (_loadError != null)
@@ -1705,7 +1867,7 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
         style: const TextStyle(
           color: Color(0xFF26323D),
           fontSize: 14,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w400,
         ),
       ),
       subtitle: Text(

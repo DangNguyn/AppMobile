@@ -74,6 +74,7 @@ class _SearchPanelState extends State<SearchPanel> {
   void _pickLocation() async {
     final selected = await showModalBottomSheet<String>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -162,6 +163,7 @@ class _SearchPanelState extends State<SearchPanel> {
   void _pickGuestOptions() async {
     final result = await showModalBottomSheet<Map<String, int>>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -783,7 +785,10 @@ class _HotelRowSectionState extends State<HotelRowSection> {
               },
               borderRadius: BorderRadius.circular(16),
               child: const SizedBox(width: double.infinity, height: 180),
-              ).animate().fadeIn(duration: 450.ms).scale(begin: const Offset(0.98, 0.98)),
+            ).animate().fadeIn(duration: AppMotion.entranceDuration).scale(
+                  begin: const Offset(0.985, 0.985),
+                  duration: AppMotion.entranceDuration,
+                ),
           ),
         ],
       ],

@@ -34,7 +34,7 @@ class _DiscountIconButtonState extends State<DiscountIconButton> {
           onTapCancel: () => setState(() => _isPressed = false),
           customBorder: const CircleBorder(),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
+            duration: AppMotion.interactionDuration,
             width: 42,
             height: 42,
             alignment: Alignment.center,
@@ -55,11 +55,11 @@ class _DiscountIconButtonState extends State<DiscountIconButton> {
                   : const [],
             ),
             child: AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 140),
+              duration: AppMotion.interactionDuration,
               style: TextStyle(
                 color: Colors.white,
                 fontSize: _isHighlighted ? 23 : 19,
-                fontWeight: _isHighlighted ? FontWeight.w900 : FontWeight.w500,
+                fontWeight: _isHighlighted ? FontWeight.w900 : FontWeight.w300,
                 shadows: _isHighlighted
                     ? const [Shadow(color: Colors.white, blurRadius: 12)]
                     : const [],
@@ -187,7 +187,7 @@ class _DiscountPageState extends State<DiscountPage> {
           future: _vouchers,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: AppLoadingIndicator());
             }
             if (snapshot.hasError) {
               return Center(
@@ -260,7 +260,7 @@ class _DiscountPageState extends State<DiscountPage> {
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
-                    height: 188,
+                    height: 144,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: vouchers.length,
@@ -269,10 +269,13 @@ class _DiscountPageState extends State<DiscountPage> {
                           _voucherCard(vouchers[index])
                               .animate()
                               .fadeIn(
-                                delay: Duration(milliseconds: index * 70),
-                                duration: 450.ms,
+                                delay: AppMotion.entranceStagger * index,
+                                duration: AppMotion.entranceDuration,
                               )
-                              .slideX(begin: 0.12),
+                              .slideX(
+                                begin: 0.04,
+                                duration: AppMotion.entranceDuration,
+                              ),
                     ),
                   ),
                   const SizedBox(height: 26),
@@ -298,7 +301,7 @@ class _DiscountPageState extends State<DiscountPage> {
           color: _filter == value
               ? const Color(0xFF2A6EEB)
               : const Color(0xFF4B5563),
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w400,
         ),
       ),
     );
@@ -318,22 +321,24 @@ class _DiscountPageState extends State<DiscountPage> {
         side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
       child: SizedBox(
-        width: 326,
+        width: 250,
+        height: 120,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(8),
           child: Row(
             children: [
               Container(
-                width: 64,
+                width: 56,
                 height: double.infinity,
-                constraints: const BoxConstraints(minHeight: 150),
                 alignment: Alignment.center,
+                padding: const EdgeInsets.all(8),
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFF2A6EEB), Color(0xFF62B4F8)],
+                    colors: [Color(0xFF0875F5), Color(0xFF42B8F5)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
                 ),
                 child: Stack(
                   alignment: Alignment.center,
@@ -341,80 +346,97 @@ class _DiscountPageState extends State<DiscountPage> {
                     const Icon(
                       Icons.confirmation_number_rounded,
                       color: Colors.white,
-                      size: 38,
+                      size: 42,
                     ),
-                    Positioned(
-                      bottom: 14,
-                      child: Text(
-                        isPercent ? '%' : '₫',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            isPercent
+                                ? '${voucher.discountValue.round()}%'
+                                : _formatVnd(voucher.discountValue),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      voucher.code,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF0E1F38),
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
                       isPercent
                           ? 'Giảm ${voucher.discountValue.round()}%'
                           : 'Giảm ${_formatVnd(voucher.discountValue)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF1688C7),
-                        fontSize: 17,
+                        color: Color(0xFF008ACB),
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Mã ${voucher.code}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF26384D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     Text(
                       'Tối thiểu ${_formatVnd(voucher.minOrder)}',
                       style: const TextStyle(
                         color: Color(0xFF667085),
-                        fontSize: 11,
+                        fontSize: 10,
                       ),
                     ),
-                    Text(
-                      'HSD ${_formatDate(voucher.endDate)}',
-                      style: const TextStyle(
-                        color: Color(0xFF667085),
-                        fontSize: 11,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 32,
-                      child: OutlinedButton.icon(
-                        onPressed:
-                            saved ? null : () => _saveVoucher(voucher.code),
-                        icon: Icon(saved ? Icons.check : Icons.add, size: 16),
-                        label: Text(saved ? 'Đã lưu' : 'Lưu mã'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF2A6EEB),
-                          disabledForegroundColor: const Color(0xFF2E9B63),
-                          side: const BorderSide(color: Color(0xFF2A6EEB)),
-                          padding: const EdgeInsets.symmetric(horizontal: 9),
-                          textStyle: const TextStyle(fontSize: 12),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'HSD ${_formatDate(voucher.endDate)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF667085),
+                              fontSize: 9,
+                            ),
+                          ),
                         ),
-                      ),
+                        TextButton.icon(
+                          onPressed:
+                              saved ? null : () => _saveVoucher(voucher.code),
+                          icon: Icon(saved ? Icons.check : Icons.add, size: 15),
+                          label: Text(saved ? 'Đã lưu' : 'Thu thập'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF0875F5),
+                            disabledForegroundColor: const Color(0xFF2E9B63),
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            visualDensity: VisualDensity.compact,
+                            textStyle: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -451,7 +473,7 @@ class _DiscountPageState extends State<DiscountPage> {
             if (snapshot.connectionState == ConnectionState.waiting)
               const SizedBox(
                 height: 230,
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(child: AppLoadingIndicator()),
               )
             else
               hotels.isEmpty
@@ -478,10 +500,13 @@ class _DiscountPageState extends State<DiscountPage> {
                           return _hotelCard(hotel, imageRequest)
                               .animate()
                               .fadeIn(
-                                delay: Duration(milliseconds: 150 + index * 80),
-                                duration: 500.ms,
+                                delay: AppMotion.entranceStagger * (index + 2),
+                                duration: AppMotion.entranceDuration,
                               )
-                              .slideY(begin: 0.1);
+                              .slideY(
+                                begin: 0.04,
+                                duration: AppMotion.entranceDuration,
+                              );
                         },
                       ),
                     ),
@@ -550,7 +575,7 @@ class _DiscountPageState extends State<DiscountPage> {
                           return const ColoredBox(
                             color: Color(0xFFE8EEF8),
                             child: Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: AppLoadingIndicator(size: 20),
                             ),
                           );
                         }

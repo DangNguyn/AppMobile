@@ -20,6 +20,8 @@ import 'api/models.dart';
 import 'destination_images.dart';
 import 'advanced_hotel_filter.dart';
 import 'voucher_storage_service.dart';
+import 'ui_motion.dart';
+import 'account_page.dart';
 
 part 'support.dart';
 part 'booking.dart';
@@ -61,10 +63,180 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2F80ED)),
         fontFamily: 'Roboto',
+        textTheme: AppTypography.textTheme,
+        pageTransitionsTheme: appPageTransitionsTheme,
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: Color(0xFF1674C5),
+          circularTrackColor: Color(0xFFDCE7F1),
+          linearTrackColor: Color(0xFFDCE7F1),
+        ),
       ),
       home: const TravelHomePage(),
     );
   }
+}
+
+class _MockVietQrSheet extends StatefulWidget {
+  const _MockVietQrSheet();
+
+  @override
+  State<_MockVietQrSheet> createState() => _MockVietQrSheetState();
+}
+
+class _MockVietQrSheetState extends State<_MockVietQrSheet> {
+  Timer? _timer;
+  int _seconds = 7;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_seconds <= 1) {
+        _timer?.cancel();
+        if (mounted) Navigator.of(context).pop(true);
+      } else {
+        setState(() => _seconds--);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text('Thanh toán bằng VietQR',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 14),
+              Container(
+                width: 190,
+                height: 190,
+                color: Colors.white,
+                padding: const EdgeInsets.all(12),
+                child: CustomPaint(painter: _MockQrPainter()),
+              ),
+              const SizedBox(height: 14),
+              const Text('Ngân hàng MB · TRAVEL CÙNG CƯ',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('STK 0123456789 · Nội dung: BOOKING DEMO',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              Text('Tự động ghi nhận sau $_seconds giây',
+                  style: const TextStyle(color: Colors.black54)),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    _timer?.cancel();
+                    Navigator.of(context).pop(true);
+                  },
+                  child: const Text('Tôi đã hoàn tất chuyển khoản'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _MockQrPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0xFF0E1F38);
+    const cell = 9.0;
+    for (var row = 0; row < 18; row++) {
+      for (var column = 0; column < 18; column++) {
+        final finder = (row < 5 && column < 5) ||
+            (row < 5 && column > 12) ||
+            (row > 12 && column < 5);
+        if (finder || (row * 7 + column * 11) % 5 < 2) {
+          canvas.drawRect(
+            Rect.fromLTWH(column * cell, row * cell, cell - 1, cell - 1),
+            paint,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _PaymentLoadingDialog extends StatelessWidget {
+  const _PaymentLoadingDialog();
+
+  @override
+  Widget build(BuildContext context) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(width: 24, height: 24, child: CircularProgressIndicator()),
+            SizedBox(width: 16),
+            Expanded(child: Text('Đang kết nối cổng thanh toán...')),
+          ],
+        ),
+      );
+}
+
+class BookingSuccessScreen extends StatelessWidget {
+  const BookingSuccessScreen({super.key, required this.booking});
+
+  final Booking booking;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Thanh toán')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle_rounded,
+                    color: Color(0xFF2E9B63), size: 84),
+                const SizedBox(height: 18),
+                const Text('Ghi nhận thanh toán thành công!',
+                    textAlign: TextAlign.center,
+                    style:
+                        TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                const Text('Đang chờ khách sạn xác nhận',
+                    style: TextStyle(color: Colors.black54)),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute<void>(
+                          builder: (_) => const BookingPage()),
+                    ),
+                    child: const Text('Xem đơn đặt phòng'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class FixedEdgeScrollBehavior extends ScrollBehavior {
@@ -131,7 +303,7 @@ class _TravelHomePageState extends State<TravelHomePage> {
   void _scrollToTop() {
     _scrollController.animateTo(
       0,
-      duration: const Duration(milliseconds: 350),
+      duration: AppMotion.pageDuration,
       curve: Curves.easeOutCubic,
     );
   }
@@ -292,7 +464,7 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                 fontSize: 14,
                                 fontWeight: isActive
                                     ? FontWeight.w700
-                                    : FontWeight.w500,
+                                    : FontWeight.w300,
                                 color: isActive
                                     ? const Color(0xFF1B6EEB)
                                     : const Color(0xFF7F8AA0),

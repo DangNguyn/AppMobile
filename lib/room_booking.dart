@@ -29,6 +29,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   double? _discountAmount;
   double? _validatedTotalAmount;
   String? _selectedPaymentMethod;
+  SavedPaymentCard? _selectedPaymentCard;
   bool _isSubmitting = false;
   List<String> _availableRoomIds = const [];
 
@@ -66,54 +67,23 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         children: widget.selection.childCount,
         voucherCode: _selectedVoucher?.code,
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Đặt phòng đang ở trạng thái ${booking.status}.')),
+      await apiRepository.addBookingGuest(
+        bookingId: booking.id,
+        fullName: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        email: _emailController.text.trim(),
       );
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 180,
-                height: 150,
-                child: Lottie.network(
-                  'https://assets10.lottiefiles.com/packages/lf20_s2lryxtd.json',
-                  repeat: false,
-                  errorBuilder: (context, error, stackTrace) => const Icon(
-                    Icons.check_circle_rounded,
-                    color: Color(0xFF2E9B63),
-                    size: 72,
-                  ),
-                ),
-              ),
-              const Text(
-                'Đặt phòng thành công!',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Thông tin đặt phòng của bạn đã được ghi nhận.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Hoàn tất'),
-            ),
-          ],
+      await apiRepository.createPayment(
+        bookingId: booking.id,
+        method: _selectedPaymentMethod == 'vietqr' ? 'bank_transfer' : 'online',
+        amount: _total,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => BookingSuccessScreen(booking: booking),
         ),
       );
-      if (mounted) Navigator.of(context).pop();
     } on ApiException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -122,6 +92,46 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  Future<void> _continuePayment() async {
+    if (_selectedPaymentMethod == 'vietqr') {
+      final completed = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (_) => const _MockVietQrSheet(),
+      );
+      if (completed == true && mounted) await _runPaymentLoading();
+      return;
+    }
+    if (_selectedPaymentMethod == 'card') {
+      final card = await Navigator.of(context).push<SavedPaymentCard>(
+        MaterialPageRoute<SavedPaymentCard>(
+          builder: (_) => const AddPaymentCardPage(),
+        ),
+      );
+      if (card == null || !mounted) return;
+      setState(() => _selectedPaymentCard = card);
+      await _runPaymentLoading();
+      return;
+    }
+  }
+
+  Future<void> _runPaymentLoading() async {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _PaymentLoadingDialog(),
+    );
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    await _createBooking();
   }
 
   String _dateOnly(DateTime value) =>
@@ -140,6 +150,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         hotelId: widget.hotelId!,
         checkIn: _dateOnly(widget.selection.dateRange.start),
         checkOut: _dateOnly(widget.selection.dateRange.end),
+        roomTypeId: widget.roomType?.id,
       );
       if (mounted) {
         setState(
@@ -180,6 +191,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   Future<void> _chooseCoupon() async {
     final validation = await showModalBottomSheet<VoucherValidation>(
       context: context,
+      sheetAnimationStyle: AppMotion.sheetAnimationStyle,
       backgroundColor: Colors.white,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -187,7 +199,6 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
       ),
       builder: (context) => _VoucherSelectionSheet(
         currentSubtotal: _subtotal,
-        currentDate: DateTime.now(),
       ),
     );
     if (!mounted || validation == null) return;
@@ -272,7 +283,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                         const SizedBox(height: 12),
                         const Text(
                           'Tiện ích phòng',
-                          style: TextStyle(fontWeight: FontWeight.w600),
+                          style: TextStyle(fontWeight: FontWeight.w400),
                         ),
                         const SizedBox(height: 10),
                         const Wrap(
@@ -396,7 +407,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                                     ? 'Chọn phiếu giảm giá hoặc coupon'
                                     : '${_selectedVoucher!.code} · Giảm ${_formatVnd(_discount)}',
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w400,
                                 ),
                               ),
                             ),
@@ -479,9 +490,9 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                   ? _continueToPayment
                   : _selectedPaymentMethod == null
                       ? null
-                      : () {
-                          _createBooking();
-                        },
+                      : _isSubmitting
+                          ? null
+                          : _continuePayment,
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF0E1F38),
                 foregroundColor: Colors.white,
@@ -494,7 +505,10 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                     ? 'Tiếp tục'
                     : _selectedPaymentMethod == null
                         ? 'Chọn phương thức thanh toán'
-                        : 'Thanh toán ${_formatVnd(_total)}',
+                        : _selectedPaymentMethod == 'card' &&
+                                _selectedPaymentCard == null
+                            ? 'Nhập thông tin thẻ'
+                            : 'Thanh toán ${_formatVnd(_total)}',
                 textAlign: TextAlign.center,
               ),
             ),
@@ -559,39 +573,13 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
           color: const Color(0xFF0E1F38),
         ),
         _paymentOption(
-          id: 'wallet',
-          title: 'Ví điện tử',
-          subtitle: 'Apple Pay · ZaloPay · MoMo · ShopeePay',
-          icon: Icons.account_balance_wallet_outlined,
-          color: const Color(0xFF8E44AD),
-        ),
-        _paymentOption(
-          id: 'mobile_banking',
-          title: 'Ngân hàng di động',
-          subtitle: 'Thanh toán qua ứng dụng ngân hàng',
-          icon: Icons.phone_android_rounded,
-          color: const Color(0xFF0E1F38),
-        ),
-        _paymentOption(
-          id: 'bank_transfer',
-          title: 'Chuyển tiền qua VietinBank',
-          subtitle: 'Chuyển khoản ngân hàng',
-          icon: Icons.account_balance_outlined,
-          color: const Color(0xFF0E1F38),
-        ),
-        _paymentOption(
           id: 'card',
           title: 'Thẻ thanh toán',
-          subtitle: 'Visa · Mastercard · JCB · AMEX',
+          subtitle: _selectedPaymentCard == null
+              ? 'Visa · Mastercard · JCB · AMEX'
+              : '${_selectedPaymentCard!.cardType} •••• ${_selectedPaymentCard!.lastFour}',
           icon: Icons.credit_card_rounded,
           color: const Color(0xFF34495E),
-        ),
-        _paymentOption(
-          id: 'pay_later',
-          title: 'Home PayLater',
-          subtitle: 'Thanh toán trả sau',
-          icon: Icons.schedule_rounded,
-          color: const Color(0xFFE05A45),
         ),
         _bookingSection(
           title: 'Mã giảm giá',
@@ -635,7 +623,10 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => setState(() => _selectedPaymentMethod = id),
+        onTap: () => setState(() {
+          _selectedPaymentMethod = id;
+          if (id != 'card') _selectedPaymentCard = null;
+        }),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
@@ -678,7 +669,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w400,
                         fontSize: 14,
                       ),
                     ),
@@ -827,17 +818,14 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
       ],
     );
   }
-
 }
 
 class _VoucherSelectionSheet extends StatefulWidget {
   const _VoucherSelectionSheet({
     required this.currentSubtotal,
-    required this.currentDate,
   });
 
   final double currentSubtotal;
-  final DateTime currentDate;
 
   @override
   State<_VoucherSelectionSheet> createState() => _VoucherSelectionSheetState();
@@ -845,7 +833,9 @@ class _VoucherSelectionSheet extends StatefulWidget {
 
 class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
   late Future<List<Voucher>> _vouchers;
-  Set<String> _savedCodes = {};
+  final Map<String, VoucherValidation> _validatedVouchers = {};
+  final Map<String, String> _eligibilityReasons = {};
+  final Map<String, String> _validationErrors = {};
   String? _loadingCode;
 
   @override
@@ -856,25 +846,59 @@ class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
 
   Future<List<Voucher>> _loadVouchers() async {
     final saved = await voucherStorageService.getSavedVoucherCodes();
-    if (mounted) setState(() => _savedCodes = saved.toSet());
-    final vouchers = await apiRepository.vouchers();
-    vouchers.sort(
-      (first, second) => (_savedCodes.contains(second.code.toUpperCase()) ? 1 : 0)
-          .compareTo(_savedCodes.contains(first.code.toUpperCase()) ? 1 : 0),
-    );
+    final savedCodes = saved.map((code) => code.trim().toUpperCase()).toSet();
+    final vouchersByCode = <String, Voucher>{};
+    for (final voucher in await apiRepository.vouchers()) {
+      vouchersByCode[voucher.code.toUpperCase()] = voucher;
+    }
+
+    // The public list contains only active vouchers. Fetch saved codes missing
+    // from it individually so expired/inactive saved vouchers can remain visible
+    // as disabled choices with the API's actual eligibility response.
+    for (final code in savedCodes) {
+      if (vouchersByCode.containsKey(code)) continue;
+      try {
+        final voucher = await apiRepository.voucher(code);
+        vouchersByCode[voucher.code.toUpperCase()] = voucher;
+      } on ApiException catch (error) {
+        _eligibilityReasons[code] = error.message;
+      }
+    }
+
+    final vouchers = vouchersByCode.values.toList();
+
+    // Ask the backend about each voucher separately. This lets the backend
+    // apply voucher-specific rules instead of assuming every code only has a
+    // minimum-order condition.
+    await Future.wait(vouchers.map((voucher) async {
+      final key = voucher.code.toUpperCase();
+      try {
+        _validatedVouchers[key] = await apiRepository.validateVoucher(
+          code: voucher.code,
+          subtotal: widget.currentSubtotal,
+        );
+      } on ApiException catch (error) {
+        if (error.statusCode == 400 || error.statusCode == 404) {
+          _eligibilityReasons[key] = error.message;
+        } else {
+          _validationErrors[key] = error.message;
+        }
+      }
+    }));
+
+    vouchers.sort((first, second) {
+      final firstCode = first.code.toUpperCase();
+      final secondCode = second.code.toUpperCase();
+      final savedOrder = (savedCodes.contains(secondCode) ? 1 : 0)
+          .compareTo(savedCodes.contains(firstCode) ? 1 : 0);
+      if (savedOrder != 0) return savedOrder;
+      final usableOrder = (_validatedVouchers.containsKey(secondCode) ? 1 : 0)
+          .compareTo(_validatedVouchers.containsKey(firstCode) ? 1 : 0);
+      if (usableOrder != 0) return usableOrder;
+      return first.code.compareTo(second.code);
+    });
     return vouchers;
   }
-
-  bool _isValid(Voucher voucher) =>
-      voucher.status == 'active' &&
-      voucher.startDate != null &&
-      voucher.endDate != null &&
-      !_dateOnly(widget.currentDate).isBefore(_dateOnly(voucher.startDate!)) &&
-      !_dateOnly(widget.currentDate).isAfter(_dateOnly(voucher.endDate!)) &&
-      widget.currentSubtotal >= voucher.minOrder;
-
-  DateTime _dateOnly(DateTime value) =>
-      DateTime(value.year, value.month, value.day);
 
   String _formatVnd(num value) =>
       '${value.round().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]}.')}đ';
@@ -884,18 +908,9 @@ class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
     return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
   }
 
-  String _reason(Voucher voucher) {
-    if (widget.currentSubtotal < voucher.minOrder) {
-      return 'Đơn tối thiểu ${_formatVnd(voucher.minOrder)} (Còn thiếu ${_formatVnd(voucher.minOrder - widget.currentSubtotal)})';
-    }
-    if (!_isValid(voucher)) {
-      return 'Mã chỉ áp dụng từ ${_formatDate(voucher.startDate)} đến ${_formatDate(voucher.endDate)}';
-    }
-    return '';
-  }
-
   Future<void> _apply(Voucher voucher) async {
-    if (!_isValid(voucher)) return;
+    final key = voucher.code.toUpperCase();
+    if (!_validatedVouchers.containsKey(key)) return;
     setState(() => _loadingCode = voucher.code);
     try {
       final validation = await apiRepository.validateVoucher(
@@ -950,10 +965,11 @@ class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
                   future: _vouchers,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const Center(child: AppLoadingIndicator());
                     }
                     if (snapshot.hasError) {
-                      return Center(child: Text('Không thể tải mã: ${snapshot.error}'));
+                      return Center(
+                          child: Text('Không thể tải mã: ${snapshot.error}'));
                     }
                     final vouchers = snapshot.data ?? const <Voucher>[];
                     if (vouchers.isEmpty) {
@@ -961,10 +977,13 @@ class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
                     }
                     return ListView.separated(
                       itemCount: vouchers.length,
-                      separatorBuilder: (_, index) => const SizedBox(height: 10),
+                      separatorBuilder: (_, index) =>
+                          const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final voucher = vouchers[index];
-                        final valid = _isValid(voucher);
+                        final voucherKey = voucher.code.toUpperCase();
+                        final valid =
+                            _validatedVouchers.containsKey(voucherKey);
                         final isPercent = voucher.discountType == 'percent';
                         return Opacity(
                           opacity: valid ? 1 : 0.5,
@@ -989,7 +1008,8 @@ class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           voucher.code,
@@ -1009,7 +1029,11 @@ class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
                                         Text(
                                           valid
                                               ? 'HSD ${_formatDate(voucher.endDate)}'
-                                              : _reason(voucher),
+                                              : _eligibilityReasons[
+                                                      voucherKey] ??
+                                                  _validationErrors[
+                                                      voucherKey] ??
+                                                  'Chưa xác minh được điều kiện',
                                           style: const TextStyle(
                                             fontSize: 11,
                                             color: Colors.black54,
@@ -1049,13 +1073,16 @@ class _VoucherSelectionSheetState extends State<_VoucherSelectionSheet> {
 class _RoomAmenityItem extends StatelessWidget {
   final IconData icon;
   final String label;
+  final bool dense;
 
-  const _RoomAmenityItem({required this.icon, required this.label});
+  const _RoomAmenityItem(
+      {required this.icon, required this.label, this.dense = false});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      padding: EdgeInsets.symmetric(
+          horizontal: dense ? 8 : 10, vertical: dense ? 6 : 9),
       decoration: BoxDecoration(
         color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(10),
@@ -1063,14 +1090,16 @@ class _RoomAmenityItem extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 17, color: const Color(0xFF0E1F38)),
-          const SizedBox(width: 7),
+          Icon(icon, size: dense ? 15 : 17, color: const Color(0xFF0E1F38)),
+          SizedBox(width: dense ? 5 : 7),
           Text(
             label,
-            style: const TextStyle(
+            maxLines: dense ? 1 : null,
+            overflow: dense ? TextOverflow.ellipsis : null,
+            style: TextStyle(
               color: Color(0xFF394550),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+              fontSize: dense ? 11 : 13,
+              fontWeight: FontWeight.w300,
             ),
           ),
         ],
@@ -1133,7 +1162,7 @@ class _RoomDetailTag extends StatelessWidget {
               style: const TextStyle(
                 color: Color(0xFF394550),
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
               ),
             ),
           ),
@@ -1159,23 +1188,23 @@ class _RoomDetailInfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: const Color(0xFF0E1F38)),
-        const SizedBox(width: 10),
+        Icon(icon, size: 18, color: const Color(0xFF0E1F38)),
+        const SizedBox(width: 8),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: const TextStyle(color: Color(0xFF6D747B), fontSize: 12),
+                style: const TextStyle(color: Color(0xFF6D747B), fontSize: 11),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 2),
               Text(
                 value,
                 style: const TextStyle(
                   color: Color(0xFF26323D),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
             ],
