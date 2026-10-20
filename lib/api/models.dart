@@ -153,6 +153,8 @@ class Booking {
     this.hotelName,
     this.roomTypeName,
     this.guest,
+    this.paymentStatus,
+    this.paymentMethod,
   });
 
   final String id;
@@ -170,6 +172,8 @@ class Booking {
   final String? hotelName;
   final String? roomTypeName;
   final BookingGuest? guest;
+  final String? paymentStatus;
+  final String? paymentMethod;
 
   factory Booking.fromJson(Map<String, dynamic> json) => Booking(
         id: '${json['id'] ?? ''}',
@@ -189,6 +193,8 @@ class Booking {
         guest: json['guest'] is Map
             ? BookingGuest.fromJson((json['guest'] as Map).cast<String, dynamic>())
             : null,
+        paymentStatus: json['payment_status'] as String?,
+        paymentMethod: json['payment_method'] as String?,
       );
 
   Booking copyWith({
@@ -196,6 +202,8 @@ class Booking {
     String? hotelName,
     String? roomTypeName,
     BookingGuest? guest,
+    String? paymentStatus,
+    String? paymentMethod,
   }) =>
       Booking(
         id: id,
@@ -213,6 +221,8 @@ class Booking {
         hotelName: hotelName ?? this.hotelName,
         roomTypeName: roomTypeName ?? this.roomTypeName,
         guest: guest ?? this.guest,
+        paymentStatus: paymentStatus ?? this.paymentStatus,
+        paymentMethod: paymentMethod ?? this.paymentMethod,
       );
 }
 
@@ -239,18 +249,21 @@ class BookingRoom {
     required this.roomId,
     this.roomNumber,
     this.roomTypeId,
+    this.roomType,
     this.subtotal,
   });
 
   final String roomId;
   final String? roomNumber;
   final String? roomTypeId;
+  final String? roomType;
   final double? subtotal;
 
   factory BookingRoom.fromJson(Map<String, dynamic> json) => BookingRoom(
         roomId: '${json['room_id'] ?? ''}',
         roomNumber: json['room_number'] as String?,
         roomTypeId: json['room_type_id'] as String?,
+        roomType: json['room_type'] as String?,
         subtotal: _number(json['subtotal']),
       );
 }

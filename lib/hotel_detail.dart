@@ -118,6 +118,7 @@ class _PolicyRow extends StatelessWidget {
 
 class _HotelDetailPageState extends State<HotelDetailPage> {
   bool _isSaved = false;
+  bool _isSavingFavorite = false;
   bool _isSectionBarVisible = false;
   int _selectedSectionIndex = 0;
   Hotel? _hotel;
@@ -212,8 +213,51 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
           );
         }
       });
+      try {
+        final favorites = await apiRepository.favorites();
+        if (mounted) {
+          setState(() => _isSaved = favorites.any((item) => item.id == hotelId));
+        }
+      } on ApiException {
+        // Favorite state is unavailable until the user is authenticated.
+      }
     } on ApiException {
       // The fallback content remains visible when optional detail calls fail.
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final hotelId = widget.hotelId;
+    if (hotelId == null || hotelId.isEmpty || _isSavingFavorite) return;
+    setState(() => _isSavingFavorite = true);
+    try {
+      if (_isSaved) {
+        await apiRepository.removeFavorite(hotelId);
+      } else {
+        await apiRepository.addFavorite(hotelId);
+      }
+      if (!mounted) return;
+      setState(() {
+        _isSaved = !_isSaved;
+        _isSavingFavorite = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_isSaved
+            ? 'Đã lưu khách sạn vào mục yêu thích'
+            : 'Đã bỏ khách sạn khỏi mục yêu thích'),
+      ));
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _isSavingFavorite = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSavingFavorite = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể cập nhật khách sạn đã lưu.')),
+      );
     }
   }
 
@@ -1298,10 +1342,16 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
           ),
           IconButton(
             tooltip: _isSaved ? 'Bỏ lưu' : 'Lưu khách sạn',
-            onPressed: () => setState(() => _isSaved = !_isSaved),
-            icon: Icon(
-              _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-            ),
+            onPressed: _isSavingFavorite ? null : _toggleFavorite,
+            icon: _isSavingFavorite
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(_isSaved
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_border_rounded),
           ),
           IconButton(
             tooltip: 'Thư',

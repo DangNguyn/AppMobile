@@ -48,6 +48,18 @@ class ApiRepository {
 
   Future<ApiUser> me() async =>
       ApiUser.fromJson(_data(await client.get('/api/auth/me', auth: true)));
+  Future<ApiUser> updateCurrentUser({
+    required String fullName,
+    required String phone,
+    String? email,
+  }) async =>
+      ApiUser.fromJson(_data(await client.put('/api/users/me',
+          auth: true,
+          body: {
+            'full_name': fullName,
+            'phone': phone,
+            if (email != null) 'email': email,
+          })));
   Future<void> logout() async {
     try {
       await client.post('/api/auth/logout', auth: true);
@@ -149,6 +161,8 @@ class ApiRepository {
       )));
   Future<Booking> booking(String id) async => Booking.fromJson(
       _data(await client.get('/api/bookings/$id', auth: true)));
+  Future<Map<String, dynamic>> bookingQr(String id) async =>
+      _data(await client.get('/api/bookings/$id/qr', auth: true));
   Future<Booking> cancelBooking(String id) async => Booking.fromJson(
       _data(await client.patch('/api/bookings/$id/cancel', auth: true)));
   Future<List<FavoriteHotel>> favorites() async =>
@@ -180,15 +194,24 @@ class ApiRepository {
           .toList();
   Future<Payment> createPayment(
           {required String bookingId,
-          required String method,
-          required double amount}) async =>
+          required String method}) async =>
       Payment.fromJson(_data(await client.post('/api/payments',
           auth: true,
           body: {
             'booking_id': bookingId,
             'payment_method': method,
-            'amount': amount
           })));
+  Future<Map<String, dynamic>> paymentQr(String paymentId) async =>
+      _data(await client.get('/api/payments/$paymentId/qr', auth: true));
+  Future<Payment> simulatePayment({
+    required String paymentId,
+    required String result,
+  }) async =>
+      Payment.fromJson(_data(await client.post(
+        '/api/payments/$paymentId/simulate',
+        auth: true,
+        body: {'result': result},
+      )));
 
   Future<List<Voucher>> vouchers() async =>
       _items(await client.get('/api/vouchers'))

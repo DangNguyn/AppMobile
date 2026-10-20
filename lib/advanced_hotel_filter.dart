@@ -67,47 +67,6 @@ class _AdvancedHotelFilterPageState extends State<AdvancedHotelFilterPage>
   Future<List<String>> _imagesFor(Hotel hotel) =>
       _imageRequests.putIfAbsent(hotel.id, () => apiRepository.hotelImages(hotel.id));
 
-  Future<void> _openRatingFilterLegacy() async {
-    final minimumRating = await showModalBottomSheet<double>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Lọc theo hạng sao', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 14),
-              for (final rating in <double?>[null, 3, 4, 5])
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(rating == null ? Icons.hotel_rounded : Icons.star_rounded,
-                      color: rating == null ? const Color(0xFF173B68) : const Color(0xFFFFB400)),
-                  title: Text(rating == null ? 'Tất cả khách sạn' : 'Từ ${rating.toInt()} sao trở lên'),
-                  onTap: () => Navigator.pop(context, rating),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (!mounted) return;
-    final filtered = minimumRating == null
-        ? List<Hotel>.of(_allHotels)
-        : _allHotels.where((hotel) => (hotel.starRating ?? 0) >= minimumRating).toList();
-    setState(() {
-      _hotels = filtered;
-      _seenCount = 0;
-      _totalCount = filtered.length;
-      _dragX = 0;
-    });
-  }
-
   Future<void> _openFilters() async {
     final facets = await Future.wait(_allHotels.map((hotel) async {
       try {

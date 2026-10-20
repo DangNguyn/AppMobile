@@ -548,43 +548,47 @@ class _HotelSearchResultsPageState extends State<HotelSearchResultsPage> {
             child: SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => _hotels.then((hotels) {
-                  if (!mounted) return;
-                  Navigator.of(context).push(MaterialPageRoute<void>(
-                    builder: (_) => AdvancedHotelFilterPage(
-                      location: _location,
-                      initialHotels: hotels,
-                      onHotelLiked: (hotel) => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
-                          transitionDuration: const Duration(milliseconds: 480),
-                          reverseTransitionDuration:
-                              const Duration(milliseconds: 380),
-                          pageBuilder: (_, animation, secondaryAnimation) =>
-                              HotelDetailPage(
-                            selection: widget.selection,
-                            hotelName: hotel.name,
-                            hotelId: hotel.id,
+                onPressed: () {
+                  final navigator = Navigator.of(context);
+                  _hotels.then((hotels) {
+                    if (!mounted) return;
+                    navigator.push(MaterialPageRoute<void>(
+                      builder: (_) => AdvancedHotelFilterPage(
+                        location: _location,
+                        initialHotels: hotels,
+                        onHotelLiked: (hotel) => Navigator.of(context).push(
+                          PageRouteBuilder<void>(
+                            transitionDuration:
+                                const Duration(milliseconds: 480),
+                            reverseTransitionDuration:
+                                const Duration(milliseconds: 380),
+                            pageBuilder: (_, animation, secondaryAnimation) =>
+                                HotelDetailPage(
+                              selection: widget.selection,
+                              hotelName: hotel.name,
+                              hotelId: hotel.id,
+                            ),
+                            transitionsBuilder:
+                                (_, animation, secondaryAnimation, child) {
+                              final curved = CurvedAnimation(
+                                parent: animation,
+                                curve: Curves.easeInOutCubic,
+                                reverseCurve: Curves.easeInOutCubic,
+                              );
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(1, 0),
+                                  end: Offset.zero,
+                                ).animate(curved),
+                                child: child,
+                              );
+                            },
                           ),
-                          transitionsBuilder:
-                              (_, animation, secondaryAnimation, child) {
-                            final curved = CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeInOutCubic,
-                              reverseCurve: Curves.easeInOutCubic,
-                            );
-                            return SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(1, 0),
-                                end: Offset.zero,
-                              ).animate(curved),
-                              child: child,
-                            );
-                          },
                         ),
                       ),
-                    ),
-                  ));
-                }),
+                    ));
+                  });
+                },
                 icon: const Icon(Icons.swipe_rounded),
                 label: const Text('Bộ lọc nâng cao · Vuốt chọn khách sạn'),
                 style: OutlinedButton.styleFrom(

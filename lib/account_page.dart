@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'api/api_client.dart';
+import 'api/api_repository.dart';
 import 'user_service.dart';
 import 'ui_motion.dart';
 
@@ -132,6 +137,7 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _editProfile() async {
+    final messenger = ScaffoldMessenger.of(context);
     await _initialSavedDataLoad;
     if (!mounted) return;
     final updatedProfile = await Navigator.of(context).push<AccountProfileData>(
@@ -140,22 +146,59 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
     );
     if (updatedProfile != null && mounted) {
-      setState(() => _profile = updatedProfile);
-      await userService.saveUserInfo(
-        name: updatedProfile.fullName,
-        birthDate: updatedProfile.dateOfBirth,
-        gender: updatedProfile.gender,
-      );
-      await userService.saveContactInfo(
-        email: updatedProfile.email,
-        mobile: updatedProfile.mobile,
-      );
-      await _loadSavedUserData();
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Đã cập nhật thông tin cá nhân')),
+      final oldEmail = _profile.email.trim().toLowerCase();
+      final newEmail = updatedProfile.email.trim().toLowerCase();
+      try {
+        final savedProfile = await apiRepository.updateCurrentUser(
+          fullName: updatedProfile.fullName,
+          phone: updatedProfile.mobile,
+          email: newEmail == oldEmail ? null : newEmail,
         );
+        final confirmedProfile = updatedProfile.copyWith(
+          fullName: savedProfile.fullName.isEmpty
+              ? updatedProfile.fullName
+              : savedProfile.fullName,
+          email: savedProfile.email.isEmpty ? newEmail : savedProfile.email,
+          mobile: savedProfile.phone.isEmpty
+              ? updatedProfile.mobile
+              : savedProfile.phone,
+        );
+        await userService.saveUserInfo(
+          name: confirmedProfile.fullName,
+          birthDate: confirmedProfile.dateOfBirth,
+          gender: confirmedProfile.gender,
+        );
+        await userService.saveContactInfo(
+          email: confirmedProfile.email,
+          mobile: confirmedProfile.mobile,
+        );
+        if (!mounted) return;
+        setState(() => _profile = confirmedProfile);
+        await _loadSavedUserData();
+        if (!mounted) return;
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('Đã cập nhật thông tin cá nhân')),
+          );
+      } on ApiException catch (error) {
+        if (!mounted) return;
+        final message = newEmail != oldEmail && error.statusCode == 400
+            ? 'Máy chủ hiện chưa hỗ trợ đổi email đăng nhập. Thông tin chưa được lưu; email cũ vẫn được giữ nguyên.'
+            : error.statusCode == 409
+                ? 'Email hoặc số điện thoại đã được tài khoản khác sử dụng.'
+                : error.message;
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(message)));
+      } catch (_) {
+        if (!mounted) return;
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('Không thể lưu hồ sơ lên máy chủ. Thông tin chưa được thay đổi.')),
+          );
+      }
     }
   }
 
@@ -1926,6 +1969,21 @@ class PaymentMethodsPage extends StatefulWidget {
 class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
   final List<SavedPaymentCard> _cards = [];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadCards();
+  }
+
+  Future<void> _loadCards() async {
+    final cards = await SavedPaymentCardStore.loadCards();
+    if (mounted) {
+      setState(() => _cards
+      ..clear()
+      ..addAll(cards));
+    }
+  }
+
   Future<void> _addCard() async {
     final card = await Navigator.of(context).push<SavedPaymentCard>(
       MaterialPageRoute<SavedPaymentCard>(
@@ -1933,8 +1991,15 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
       ),
     );
     if (card != null && mounted) {
+      await SavedPaymentCardStore.saveCard(card);
+      if (!mounted) return;
       setState(() => _cards.add(card));
     }
+  }
+
+  Future<void> _removeCard(SavedPaymentCard card) async {
+    await SavedPaymentCardStore.removeCard(card.id);
+    if (mounted) setState(() => _cards.removeWhere((item) => item.id == card.id));
   }
 
   void _showCardInfo() {
@@ -1945,7 +2010,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         icon: const Icon(Icons.security_rounded, color: _accountBlue),
         title: const Text('Thanh toán an toàn'),
         content: const Text(
-          'Thông tin thẻ được bảo vệ khi thanh toán. Bản giao diện này chỉ lưu nhãn thẻ và 4 số cuối để minh họa; không lưu số thẻ đầy đủ hoặc mã bảo mật.',
+          'Số thẻ đã lưu được mã hóa trong vùng lưu trữ bảo mật của thiết bị để điền nhanh lần sau. Ứng dụng không lưu mã bảo mật (CVV); chỉ dùng cổng thanh toán mô phỏng.',
         ),
         actions: [
           TextButton(
@@ -1981,7 +2046,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
           : _PaymentCardList(
               cards: _cards,
               onAddCard: _addCard,
-              onRemoveCard: (card) => setState(() => _cards.remove(card)),
+              onRemoveCard: _removeCard,
             ),
     );
   }
@@ -2190,16 +2255,80 @@ class _PaymentIllustration extends StatelessWidget {
 
 class SavedPaymentCard {
   const SavedPaymentCard({
+    required this.id,
     required this.holder,
+    required this.cardNumber,
     required this.lastFour,
     required this.cardType,
     required this.expiry,
   });
 
+  final String id;
   final String holder;
+  final String cardNumber;
   final String lastFour;
   final String cardType;
   final String expiry;
+
+  Map<String, String> toJson() => {
+        'id': id,
+        'holder': holder,
+        'cardNumber': cardNumber,
+        'lastFour': lastFour,
+        'cardType': cardType,
+        'expiry': expiry,
+      };
+
+  factory SavedPaymentCard.fromJson(Map<String, dynamic> json) =>
+      SavedPaymentCard(
+        id: '${json['id'] ?? ''}',
+        holder: '${json['holder'] ?? ''}',
+        cardNumber: '${json['cardNumber'] ?? ''}',
+        lastFour: '${json['lastFour'] ?? ''}',
+        cardType: '${json['cardType'] ?? 'Thẻ ngân hàng'}',
+        expiry: '${json['expiry'] ?? ''}',
+      );
+}
+
+class SavedPaymentCardStore {
+  SavedPaymentCardStore._();
+
+  static const _storage = FlutterSecureStorage();
+  static const _key = 'saved_payment_cards_v1';
+
+  static Future<List<SavedPaymentCard>> loadCards() async {
+    final encoded = await _storage.read(key: _key);
+    if (encoded == null || encoded.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(encoded) as List<dynamic>;
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map(SavedPaymentCard.fromJson)
+          .toList();
+    } on FormatException {
+      return [];
+    } on TypeError {
+      return [];
+    }
+  }
+
+  static Future<void> saveCard(SavedPaymentCard card) async {
+    final cards = await loadCards();
+    cards.removeWhere((item) => item.id == card.id);
+    cards.insert(0, card);
+    await _write(cards.take(10).toList());
+  }
+
+  static Future<void> removeCard(String id) async {
+    final cards = await loadCards();
+    cards.removeWhere((card) => card.id == id);
+    await _write(cards);
+  }
+
+  static Future<void> _write(List<SavedPaymentCard> cards) => _storage.write(
+        key: _key,
+        value: jsonEncode(cards.map((card) => card.toJson()).toList()),
+      );
 }
 
 class _PaymentCardList extends StatelessWidget {
@@ -2254,7 +2383,7 @@ class _PaymentCardList extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Chỉ hiển thị 4 số cuối của thẻ trong giao diện.',
+          'Số thẻ đầy đủ được mã hóa trên thiết bị; giao diện chỉ hiển thị 4 số cuối. Mã CVV không được lưu.',
           style: TextStyle(color: Color(0xFF737D89), fontSize: 12),
         ),
       ],
@@ -2263,7 +2392,12 @@ class _PaymentCardList extends StatelessWidget {
 }
 
 class AddPaymentCardPage extends StatefulWidget {
-  const AddPaymentCardPage({super.key});
+  const AddPaymentCardPage({
+    super.key,
+    this.submitLabel = 'Thêm thẻ',
+  });
+
+  final String submitLabel;
 
   @override
   State<AddPaymentCardPage> createState() => _AddPaymentCardPageState();
@@ -2296,21 +2430,6 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
     return 'Thẻ ngân hàng';
   }
 
-  bool _passesLuhn(String number) {
-    var sum = 0;
-    var doubleDigit = false;
-    for (var index = number.length - 1; index >= 0; index--) {
-      var digit = int.parse(number[index]);
-      if (doubleDigit) {
-        digit *= 2;
-        if (digit > 9) digit -= 9;
-      }
-      sum += digit;
-      doubleDigit = !doubleDigit;
-    }
-    return sum % 10 == 0;
-  }
-
   String? _validateExpiry(String? value) {
     final match = RegExp(r'^(\d{2})/(\d{2})$').firstMatch(value ?? '');
     if (match == null) return 'Nhập ngày hết hạn dạng MM/YY';
@@ -2330,7 +2449,9 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
     final expiry = _expiryController.text.trim();
     Navigator.of(context).pop(
       SavedPaymentCard(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
         holder: _holderController.text.trim(),
+        cardNumber: cardNumber,
         lastFour: cardNumber.substring(cardNumber.length - 4),
         cardType: _detectCardType(cardNumber),
         expiry: expiry,
@@ -2434,17 +2555,14 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
                     controller: _numberController,
                     keyboardType: TextInputType.number,
                     maxLength: 19,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    inputFormatters: [_CardNumberInputFormatter()],
                     decoration: _fieldDecoration(
-                      'Số thẻ',
+                      'xxxx-xxxx-xxxx-xxxx',
                     ).copyWith(counterText: ''),
                     validator: (value) {
                       final number =
                           (value ?? '').replaceAll(RegExp(r'\D'), '');
-                      if (number.length != 16 ||
-                          !_passesLuhn(number)) {
-                        return 'Số thẻ phải đủ 16 chữ số';
-                      }
+                      if (number.length != 16) return 'Nhập đủ 16 chữ số';
                       return null;
                     },
                   ),
@@ -2547,15 +2665,15 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
                   foregroundColor: Colors.white,
                   shape: const StadiumBorder(),
                 ),
-                child: const Text(
-                  'Thêm thẻ',
+                child: Text(
+                  widget.submitLabel,
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
               ),
             ),
             const SizedBox(height: 14),
             const Text(
-              'Số thẻ và mã bảo mật chỉ dùng để kiểm tra biểu mẫu; ứng dụng không lưu các thông tin này.',
+              'Mã bảo mật không được lưu. Thẻ thêm trong Tài khoản được mã hóa trên thiết bị; thẻ nhập lúc thanh toán chỉ dùng cho đơn hiện tại.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Color(0xFF8A929A),
@@ -2565,6 +2683,49 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CardNumberInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final allDigits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final digits = allDigits.length > 16 ? allDigits.substring(0, 16) : allDigits;
+    final formatted = <String>[];
+    for (var start = 0; start < digits.length; start += 4) {
+      final end = start + 4 < digits.length ? start + 4 : digits.length;
+      formatted.add(digits.substring(start, end));
+    }
+    final text = formatted.join('-');
+    final requestedOffset = newValue.selection.baseOffset;
+    final offset = requestedOffset < 0
+        ? 0
+        : requestedOffset > newValue.text.length
+            ? newValue.text.length
+            : requestedOffset;
+    final rawDigitsBeforeCursor = newValue.text
+        .substring(0, offset)
+        .replaceAll(RegExp(r'\D'), '')
+        .length;
+    final digitsBeforeCursor = rawDigitsBeforeCursor > digits.length
+        ? digits.length
+        : rawDigitsBeforeCursor;
+    var cursorOffset = digitsBeforeCursor;
+    for (final boundary in [4, 8, 12]) {
+      if (digitsBeforeCursor > boundary ||
+          (digitsBeforeCursor == digits.length && digits.length > boundary)) {
+        cursorOffset++;
+      }
+    }
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(
+        offset: cursorOffset > text.length ? text.length : cursorOffset,
       ),
     );
   }

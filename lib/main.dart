@@ -10,6 +10,7 @@ import 'explore_page.dart';
 import 'onboarding_widgets.dart';
 import 'user_service.dart';
 import 'welcome_screen.dart';
+import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
 import 'voucher_storage_service.dart';
@@ -207,6 +208,7 @@ class _TravelHomePageState extends State<TravelHomePage> {
                           )
                         : _selectedNavIndex == 3
                             ? SavedPage(
+                                selection: _hotelSearchSelection,
                                 savedArticles: allTravelArticles
                                     .where(
                                       (article) => _savedArticleTitles
@@ -241,7 +243,7 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                               selection: _hotelSearchSelection,
                                               onSearch: _openHotelSearchResults,
                                             ),
-                                            const SizedBox(height: 18),
+                                            const SizedBox(height: 26),
                                             Padding(
                                               padding:
                                                   const EdgeInsets.symmetric(
@@ -253,11 +255,11 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                                 children: [
                                                   const SectionHeader(
                                                     title:
-                                                        'Mã giảm số lượng có hạn',
+                                                        'Ưu đãi từ voucher',
                                                   ),
                                                   const SizedBox(height: 12),
-                                                  const CouponRow(),
-                                                  const SizedBox(height: 18),
+                                                  const _HomeVoucherSection(),
+                                                  const SizedBox(height: 16),
                                                   HotelRowSection(
                                                       selection:
                                                           _hotelSearchSelection),
@@ -788,10 +790,46 @@ class _CustomerSupportPageState extends State<CustomerSupportPage> {
   }
 }
 
-class BookingPage extends StatelessWidget {
+class BookingPage extends StatefulWidget {
   const BookingPage({super.key, required this.onFindHotel});
 
   final VoidCallback onFindHotel;
+
+  @override
+  State<BookingPage> createState() => _BookingPageState();
+}
+
+class _BookingPageState extends State<BookingPage> {
+  late Future<List<Booking>> _bookings;
+  bool _showAllBookings = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _bookings = _loadBookings();
+  }
+
+  Future<List<Booking>> _loadBookings() async {
+    final results = await Future.wait<dynamic>([
+      apiRepository.bookings(),
+      apiRepository.me(),
+    ]);
+    final bookings = results[0] as List<Booking>;
+    final user = results[1] as ApiUser;
+    final profileGuest = BookingGuest(
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone,
+    );
+    return Future.wait(bookings.map((booking) async {
+      final detail = await apiRepository.booking(booking.id);
+      final guests = await apiRepository.bookingGuests(booking.id);
+      return booking.copyWith(
+        rooms: detail.rooms,
+        guest: guests.isEmpty ? profileGuest : guests.first,
+      );
+    }));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -913,12 +951,104 @@ class BookingPage extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
             children: [
-              const _BookingSectionHeading(title: 'Bạn đã xem qua'),
-              const SizedBox(height: 10),
-              const _BookingEmptyState(),
+              FutureBuilder<List<Booking>>(
+                future: _bookings,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _BookingSectionHeading(
+                          title: 'Lịch sử đặt phòng',
+                        ),
+                        SizedBox(height: 24),
+                        Center(child: CircularProgressIndicator()),
+                      ],
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _BookingSectionHeading(
+                          title: 'Lịch sử đặt phòng',
+                        ),
+                        const SizedBox(height: 10),
+                        _BookingHistoryMessage(
+                          message: 'Không thể tải lịch sử đơn hàng.',
+                          actionLabel: 'Thử lại',
+                          onPressed: () =>
+                              setState(() => _bookings = _loadBookings()),
+                        ),
+                      ],
+                    );
+                  }
+                  final bookings = snapshot.data ?? const <Booking>[];
+                  if (bookings.isEmpty) {
+                    return const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _BookingSectionHeading(
+                          title: 'Lịch sử đặt phòng',
+                        ),
+                        SizedBox(height: 10),
+                        _BookingEmptyState(),
+                      ],
+                    );
+                  }
+                  final visibleBookings = _showAllBookings
+                      ? bookings
+                      : bookings.take(1).toList();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: _BookingSectionHeading(
+                              title: 'Lịch sử đặt phòng',
+                            ),
+                          ),
+                          if (bookings.length > 1)
+                            TextButton.icon(
+                              key: const ValueKey('toggle_booking_history'),
+                              onPressed: () => setState(
+                                () => _showAllBookings = !_showAllBookings,
+                              ),
+                              icon: Icon(
+                                _showAllBookings
+                                    ? Icons.expand_less_rounded
+                                    : Icons.expand_more_rounded,
+                              ),
+                              label: Text(
+                                _showAllBookings
+                                    ? 'Thu gọn'
+                                    : 'Xem thêm ${bookings.length - 1} đơn',
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 240),
+                        curve: Curves.easeInOut,
+                        alignment: Alignment.topCenter,
+                        child: Column(
+                          children: [
+                            for (final booking in visibleBookings) ...[
+                              _HistoryBookingCard(booking: booking),
+                              const SizedBox(height: 12),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: onFindHotel,
+                onPressed: widget.onFindHotel,
                 icon: const Icon(Icons.hotel_outlined),
                 label: const Text('Tìm và đặt phòng khách sạn'),
               ),
@@ -950,6 +1080,177 @@ class BookingPage extends StatelessWidget {
       ],
     );
   }
+}
+
+class _HistoryBookingCard extends StatelessWidget {
+  const _HistoryBookingCard({required this.booking});
+
+  final Booking booking;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _historyStatus(booking.status);
+    final guest = booking.guest;
+    final room = booking.rooms.isEmpty ? null : booking.rooms.first;
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => hotel_booking.BookingDetailPage(booking: booking),
+          ),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A0E1F38),
+                blurRadius: 10,
+                offset: Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.hotel_rounded, color: Color(0xFF1674C5)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      booking.hotelName ?? 'Khách sạn',
+                      style: const TextStyle(
+                        color: Color(0xFF17202C),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  _HistoryStatusBadge(status: status),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '${room?.roomType ?? booking.roomTypeName ?? 'Phòng đã đặt'} · Phòng ${room?.roomNumber ?? '—'}',
+                style: const TextStyle(color: Color(0xFF374151), fontSize: 14),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                '${booking.checkIn} - ${booking.checkOut}',
+                style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tổng thanh toán: ${_formatHistoryMoney(booking.totalAmount)}',
+                style: const TextStyle(
+                  color: Color(0xFF17202C),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (guest != null) ...[
+                const SizedBox(height: 7),
+                Text(
+                  '${guest.fullName} · ${guest.phone ?? ''}',
+                  style: const TextStyle(color: Color(0xFF4B5563)),
+                ),
+                Text(
+                  guest.email ?? '',
+                  style: const TextStyle(color: Color(0xFF6B7280)),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BookingHistoryMessage extends StatelessWidget {
+  const _BookingHistoryMessage({
+    required this.message,
+    required this.actionLabel,
+    required this.onPressed,
+  });
+
+  final String message;
+  final String actionLabel;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            TextButton(onPressed: onPressed, child: Text(actionLabel)),
+          ],
+        ),
+      );
+}
+
+class _HistoryStatusBadge extends StatelessWidget {
+  const _HistoryStatusBadge({required this.status});
+  final _HistoryStatus status;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(
+          color: status.color.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          '${status.icon} ${status.label}',
+          style: TextStyle(
+            color: status.color,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+}
+
+class _HistoryStatus {
+  const _HistoryStatus(this.label, this.icon, this.color);
+  final String label;
+  final String icon;
+  final Color color;
+}
+
+_HistoryStatus _historyStatus(String value) {
+  switch (value.toLowerCase()) {
+    case 'confirmed':
+      return const _HistoryStatus('Đã xác nhận', '✓', Color(0xFF168A55));
+    case 'cancelled':
+      return const _HistoryStatus('Đã hủy', '×', Color(0xFFC0392B));
+    default:
+      return const _HistoryStatus('Chờ xác nhận', '⏳', Color(0xFFE08A00));
+  }
+}
+
+String _formatHistoryMoney(double? value) {
+  final digits = (value ?? 0).round().toString();
+  final formatted = StringBuffer();
+  for (var index = 0; index < digits.length; index++) {
+    if (index > 0 && (digits.length - index) % 3 == 0) {
+      formatted.write('.');
+    }
+    formatted.write(digits[index]);
+  }
+  return '$formatted đ';
 }
 
 class _BookingEmptyState extends StatelessWidget {
@@ -1293,7 +1594,7 @@ class _SavedVoucherCard extends StatelessWidget {
                       'Đã lưu',
                       style: TextStyle(
                         color: Color(0xFF2E9B63),
-                      fontSize: 9,
+                        fontSize: 9,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1642,11 +1943,13 @@ class _BookingSectionHeading extends StatelessWidget {
 class SavedPage extends StatelessWidget {
   const SavedPage({
     super.key,
+    required this.selection,
     required this.savedArticles,
     required this.onRemoveArticle,
     required this.onOpenArticle,
   });
 
+  final hotel_booking.HotelSearchSelection selection;
   final List<TravelArticle> savedArticles;
   final ValueChanged<TravelArticle> onRemoveArticle;
   final ValueChanged<TravelArticle> onOpenArticle;
@@ -1725,7 +2028,7 @@ class SavedPage extends StatelessWidget {
                     onRemoveArticle: onRemoveArticle,
                     onOpenArticle: onOpenArticle,
                   ),
-                  const _SavedHotelsTab(),
+                  _SavedHotelsTab(selection: selection),
                 ],
               ),
             ),
@@ -1737,7 +2040,9 @@ class SavedPage extends StatelessWidget {
 }
 
 class _SavedHotelsTab extends StatefulWidget {
-  const _SavedHotelsTab();
+  const _SavedHotelsTab({required this.selection});
+
+  final hotel_booking.HotelSearchSelection selection;
 
   @override
   State<_SavedHotelsTab> createState() => _SavedHotelsTabState();
@@ -1769,8 +2074,9 @@ class _SavedHotelsTabState extends State<_SavedHotelsTab> {
           if (snapshot.hasError) {
             return Center(
               child: TextButton(
-                onPressed: () =>
-                    setState(() => _favorites = apiRepository.favorites()),
+                onPressed: () => setState(() {
+                  _favorites = apiRepository.favorites();
+                }),
                 child: Text('${snapshot.error}\nThử lại',
                     textAlign: TextAlign.center),
               ),
@@ -1784,25 +2090,131 @@ class _SavedHotelsTabState extends State<_SavedHotelsTab> {
             padding: const EdgeInsets.fromLTRB(18, 20, 18, 24),
             itemCount: favorites.length,
             separatorBuilder: (_, index) => const SizedBox(height: 10),
-            itemBuilder: (context, index) => Card(
-              child: ListTile(
-                leading: const Icon(Icons.favorite, color: Color(0xFFE05A45)),
-                title: Text(favorites[index].name),
-                subtitle: Text(
-                    '${favorites[index].city} ${favorites[index].address}'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () async {
-                    await apiRepository.removeFavorite(favorites[index].id);
+            itemBuilder: (context, index) {
+              final hotel = favorites[index];
+              return _SavedHotelCard(
+                hotel: hotel,
+                imageRequest: apiRepository.hotelImages(hotel.id),
+                onTap: () async {
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => hotel_booking.HotelDetailPage(
+                        hotelName: hotel.name,
+                        hotelId: hotel.id,
+                        selection: widget.selection,
+                      ),
+                    ),
+                  );
+                  if (mounted) {
+                    setState(() {
+                      _favorites = apiRepository.favorites();
+                    });
+                  }
+                },
+                onRemove: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  try {
+                    await apiRepository.removeFavorite(hotel.id);
                     if (mounted) {
-                      setState(() => _favorites = apiRepository.favorites());
+                      setState(() {
+                        _favorites = apiRepository.favorites();
+                      });
                     }
+                  } on ApiException catch (error) {
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      SnackBar(content: Text(error.message)),
+                    );
+                  }
+                },
+              );
+            },
+          );
+        },
+      );
+}
+
+class _SavedHotelCard extends StatelessWidget {
+  const _SavedHotelCard({
+    required this.hotel,
+    required this.imageRequest,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final FavoriteHotel hotel;
+  final Future<List<String>> imageRequest;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 112,
+                height: 112,
+                child: FutureBuilder<List<String>>(
+                  future: imageRequest,
+                  builder: (context, snapshot) {
+                    final images = snapshot.data;
+                    final image = images != null && images.isNotEmpty
+                        ? images.first
+                        : null;
+                    if (image == null || image.isEmpty) {
+                      return const ColoredBox(
+                        color: Color(0xFFE5F1FF),
+                        child: Icon(Icons.hotel_rounded, color: Color(0xFF0875F5), size: 36),
+                      );
+                    }
+                    return Image.network(
+                      image,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const ColoredBox(
+                        color: Color(0xFFE5F1FF),
+                        child: Icon(Icons.hotel_rounded, color: Color(0xFF0875F5), size: 36),
+                      ),
+                    );
                   },
                 ),
               ),
-            ),
-          );
-        },
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(hotel.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF172536))),
+                      const SizedBox(height: 5),
+                      Text([hotel.city, hotel.address].where((text) => text.trim().isNotEmpty).join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, height: 1.3, color: Color(0xFF778391))),
+                      const SizedBox(height: 7),
+                      Row(children: [
+                        if (hotel.starRating != null) ...[
+                          const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 17),
+                          const SizedBox(width: 3),
+                          Text(hotel.starRating!.toStringAsFixed(1), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF445266))),
+                          const SizedBox(width: 8),
+                        ],
+                        const Text('Xem chi tiết', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0875F5))),
+                        const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF0875F5)),
+                      ]),
+                    ],
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Bỏ lưu khách sạn',
+                onPressed: onRemove,
+                icon: const Icon(Icons.bookmark_remove_outlined, color: Color(0xFF778391)),
+              ),
+            ],
+          ),
+        ),
       );
 }
 
@@ -2855,78 +3267,278 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-class CouponRow extends StatefulWidget {
-  const CouponRow({super.key});
+class _HomeVoucherData {
+  const _HomeVoucherData({required this.vouchers, required this.savedCodes});
 
-  @override
-  State<CouponRow> createState() => _CouponRowState();
+  final List<Voucher> vouchers;
+  final Set<String> savedCodes;
 }
 
-class _CouponRowState extends State<CouponRow> {
-  int _selectedIndex = 0;
+class _HomeVoucherSection extends StatefulWidget {
+  const _HomeVoucherSection();
 
   @override
-  Widget build(BuildContext context) {
-    const labels = [
-      'Dành riêng cho bạn',
-      'Mã cả ngày',
-      'Tổng cực D',
-      'Mã khách sạn',
-    ];
+  State<_HomeVoucherSection> createState() => _HomeVoucherSectionState();
+}
 
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: ClampingScrollPhysics(),
-        ),
-        itemCount: labels.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 12),
-        itemBuilder: (context, index) => _TagChip(
-          label: labels[index],
-          isActive: index == _selectedIndex,
-          onTap: () => setState(() => _selectedIndex = index),
-        ),
-      ),
+class _HomeVoucherSectionState extends State<_HomeVoucherSection> {
+  late Future<_HomeVoucherData> _data;
+  String _selectedType = 'all';
+
+  @override
+  void initState() {
+    super.initState();
+    _data = _loadVouchers();
+  }
+
+  DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  bool _isActiveToday(Voucher voucher, DateTime today) {
+    if (voucher.status.toLowerCase() != 'active') return false;
+    final start = voucher.startDate;
+    final end = voucher.endDate;
+    if (start != null && _dateOnly(today).isBefore(_dateOnly(start))) {
+      return false;
+    }
+    if (end != null && _dateOnly(today).isAfter(_dateOnly(end))) return false;
+    return true;
+  }
+
+  Future<_HomeVoucherData> _loadVouchers() async {
+    final results = await Future.wait<dynamic>([
+      apiRepository.vouchers(),
+      voucherStorageService.getSavedVoucherCodes(),
+    ]);
+    final today = DateTime.now();
+    final vouchers = (results[0] as List<Voucher>)
+        .where((voucher) => _isActiveToday(voucher, today))
+        .toList();
+    final savedCodes = (results[1] as List<String>)
+        .map((code) => code.toUpperCase())
+        .toSet();
+    return _HomeVoucherData(vouchers: vouchers, savedCodes: savedCodes);
+  }
+
+  bool _isPercent(Voucher voucher) =>
+      voucher.discountType.toLowerCase() == 'percent';
+
+  Future<void> _saveVoucher(
+    Voucher voucher,
+    Set<String> savedCodes,
+  ) async {
+    await voucherStorageService.saveVoucher(voucher.code);
+    if (!mounted) return;
+    setState(() => savedCodes.add(voucher.code.toUpperCase()));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Đã lưu mã ${voucher.code}')),
     );
   }
-}
 
-class _TagChip extends StatelessWidget {
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _TagChip({
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildFilter(String type, String label) {
+    final selected = type == _selectedType;
     return Material(
-      color: Colors.transparent,
+      color: selected ? const Color(0xFF0875F5) : const Color(0xFFF1F5FA),
+      borderRadius: BorderRadius.circular(22),
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: isActive ? const Color(0xFF2A6EEB) : const Color(0xFFE8EEF8),
-            borderRadius: BorderRadius.circular(14),
-          ),
+        borderRadius: BorderRadius.circular(22),
+        onTap: () => setState(() => _selectedType = type),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Text(
             label,
             style: TextStyle(
-              color: isActive ? Colors.white : const Color(0xFF2A6EEB),
-              fontSize: 14,
+              color: selected ? Colors.white : const Color(0xFF0875F5),
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildVoucherCard(Voucher voucher, Set<String> savedCodes) {
+    final isPercent = _isPercent(voucher);
+    final isSaved = savedCodes.contains(voucher.code.toUpperCase());
+    final discountLabel = isPercent
+        ? '${voucher.discountValue.round()}%'
+        : _formatMainVnd(voucher.discountValue);
+
+    return Container(
+      width: 300,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFBFD),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x100E1F38),
+            blurRadius: 14,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 19,
+                backgroundColor: const Color(0xFFE5F1FF),
+                child: Icon(
+                  isPercent
+                      ? Icons.percent_rounded
+                      : Icons.local_offer_rounded,
+                  color: const Color(0xFF176FC1),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isPercent ? 'Voucher giảm theo %' : 'Voucher giảm số tiền',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF667085),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Icon(Icons.info_outline_rounded,
+                  color: Color(0xFF8A95A3), size: 19),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Giảm $discountLabel',
+            style: const TextStyle(
+              color: Color(0xFF17202C),
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Mã ${voucher.code} · Đơn tối thiểu ${_formatMainVnd(voucher.minOrder)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Color(0xFF727D89), fontSize: 11),
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'HSD ${_formatMainDate(voucher.endDate)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF667085),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              FilledButton(
+                onPressed: isSaved
+                    ? null
+                    : () => _saveVoucher(voucher, savedCodes),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(88, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  backgroundColor: const Color(0xFFDFF3FF),
+                  foregroundColor: const Color(0xFF075F9D),
+                  disabledBackgroundColor: const Color(0xFFE4F4EC),
+                  disabledForegroundColor: const Color(0xFF258353),
+                ),
+                child: Text(isSaved ? 'Đã lưu' : 'Lưu mã'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_HomeVoucherData>(
+      future: _data,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 180,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+        if (snapshot.hasError) {
+          return Row(
+            children: [
+              const Expanded(child: Text('Không thể tải voucher lúc này.')),
+              TextButton(
+                onPressed: () => setState(() => _data = _loadVouchers()),
+                child: const Text('Thử lại'),
+              ),
+            ],
+          );
+        }
+
+        final data = snapshot.data!;
+        final vouchers = data.vouchers;
+        if (vouchers.isEmpty) {
+          return const Text(
+            'Hiện chưa có voucher đang áp dụng.',
+            style: TextStyle(color: Color(0xFF667085), fontSize: 13),
+          );
+        }
+
+        final hasPercent = vouchers.any(_isPercent);
+        final hasFixed = vouchers.any((voucher) => !_isPercent(voucher));
+        final visibleVouchers = vouchers.where((voucher) {
+          if (_selectedType == 'percent') return _isPercent(voucher);
+          if (_selectedType == 'fixed') return !_isPercent(voucher);
+          return true;
+        }).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 42,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _buildFilter('all', 'Tất cả'),
+                  if (hasPercent) ...[
+                    const SizedBox(width: 8),
+                    _buildFilter('percent', 'Giảm theo %'),
+                  ],
+                  if (hasFixed) ...[
+                    const SizedBox(width: 8),
+                    _buildFilter('fixed', 'Giảm số tiền'),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 176,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: visibleVouchers.length,
+                separatorBuilder: (_, index) => const SizedBox(width: 12),
+                itemBuilder: (context, index) => _buildVoucherCard(
+                  visibleVouchers[index],
+                  data.savedCodes,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -3275,9 +3887,8 @@ class _BrandOfferSectionState extends State<BrandOfferSection> {
         }
         prices.sort();
         final subtotal = prices.first * nights * rooms;
-        final applicable = vouchers
-            .where((voucher) => voucher.minOrder <= subtotal)
-            .toList();
+        final applicable =
+            vouchers.where((voucher) => voucher.minOrder <= subtotal).toList();
         if (applicable.isEmpty) return null;
 
         double estimatedDiscount(Voucher voucher) {
@@ -3287,8 +3898,8 @@ class _BrandOfferSectionState extends State<BrandOfferSection> {
           return amount.clamp(0, subtotal).toDouble();
         }
 
-        applicable.sort((a, b) =>
-            estimatedDiscount(b).compareTo(estimatedDiscount(a)));
+        applicable.sort(
+            (a, b) => estimatedDiscount(b).compareTo(estimatedDiscount(a)));
         final bestVoucher = applicable.first;
         return _BrandHotelOffer(
           hotel: hotel,
@@ -3417,7 +4028,8 @@ class _BrandHotelOfferCard extends StatelessWidget {
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => const ColoredBox(
                   color: Color(0xFFB8D7E8),
-                  child: Icon(Icons.hotel_rounded, color: Colors.white, size: 42),
+                  child:
+                      Icon(Icons.hotel_rounded, color: Colors.white, size: 42),
                 ),
               ),
               const DecoratedBox(
@@ -3508,8 +4120,110 @@ class _BrandHotelOfferCard extends StatelessWidget {
   }
 }
 
-class DiscoverBanner extends StatelessWidget {
+class DiscoverBanner extends StatefulWidget {
   const DiscoverBanner({super.key});
+
+  @override
+  State<DiscoverBanner> createState() => _DiscoverBannerState();
+}
+
+class _DiscoverBannerState extends State<DiscoverBanner> {
+  static const _voucherImages = [
+    'assets/images/voucher_1.jpg',
+    'assets/images/voucher_2.jpg',
+    'assets/images/voucher_3.jpg',
+    'assets/images/voucher_4.jpg',
+  ];
+
+  late Future<List<Voucher>> _vouchers;
+
+  @override
+  void initState() {
+    super.initState();
+    _vouchers = _loadActiveVouchers();
+  }
+
+  DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+
+  Future<List<Voucher>> _loadActiveVouchers() async {
+    final today = DateTime.now();
+    final vouchers = await apiRepository.vouchers();
+    return vouchers.where((voucher) {
+      if (voucher.status.toLowerCase() != 'active') return false;
+      final start = voucher.startDate;
+      final end = voucher.endDate;
+      if (start != null && _dateOnly(today).isBefore(_dateOnly(start))) return false;
+      if (end != null && _dateOnly(today).isAfter(_dateOnly(end))) return false;
+      return voucher.code.trim().isNotEmpty;
+    }).toList();
+  }
+
+  void _openDetails(Voucher voucher, int index) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => _VoucherPromotionDetailPage(
+        voucher: voucher,
+        imageAsset: _voucherImages[index % _voucherImages.length],
+      ),
+    ));
+  }
+
+  Widget _offerCard(Voucher voucher, int index) {
+    final isPercent = voucher.discountType.toLowerCase() == 'percent';
+    final discount = isPercent
+        ? '${voucher.discountValue.round()}%'
+        : _formatMainVnd(voucher.discountValue);
+    return SizedBox(
+      width: 292,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _openDetails(voucher, index),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 146,
+                child: Stack(fit: StackFit.expand, children: [
+                  Image.asset(_voucherImages[index % _voucherImages.length], fit: BoxFit.cover),
+                  const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Color(0xCC071D33)],
+                  ))),
+                  Positioned(
+                    top: 12, left: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                      child: Text(voucher.code, style: const TextStyle(color: Color(0xFF0875F5), fontWeight: FontWeight.w800, fontSize: 12)),
+                    ),
+                  ),
+                  Positioned(
+                    left: 14, right: 14, bottom: 12,
+                    child: Text('Giảm $discount', style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900)),
+                  ),
+                ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                child: Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(isPercent ? 'Ưu đãi giảm theo phần trăm' : 'Ưu đãi giảm số tiền', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF172536))),
+                    const SizedBox(height: 4),
+                    Text('Đơn tối thiểu ${_formatMainVnd(voucher.minOrder)}', style: const TextStyle(fontSize: 12, color: Color(0xFF778391))),
+                  ])),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Color(0xFF0875F5)),
+                ]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3524,116 +4238,196 @@ class DiscoverBanner extends StatelessWidget {
             color: Colors.black,
           ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: Container(
-                height: 180,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFD8D4A8), Color(0xFFB8C480)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      top: 22,
-                      left: 30,
-                      right: 30,
-                      bottom: 20,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          color: Colors.white.withValues(alpha: 0.2),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 24,
-                      right: 24,
-                      bottom: 18,
-                      child: Container(
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 36,
-                      bottom: 50,
-                      child: Container(
-                        width: 100,
-                        height: 150,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: Colors.white.withValues(alpha: 0.2),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+        const SizedBox(height: 12),
+        FutureBuilder<List<Voucher>>(
+          future: _vouchers,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Text('Chưa tải được ưu đãi. Vui lòng thử lại sau.', style: TextStyle(color: Color(0xFF778391), fontSize: 13));
+            }
+            if (!snapshot.hasData) {
+              return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
+            }
+            final vouchers = snapshot.data!;
+            if (vouchers.isEmpty) {
+              return const Text('Hiện chưa có voucher khả dụng.', style: TextStyle(color: Color(0xFF778391), fontSize: 13));
+            }
+            return SizedBox(
+              height: 235,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: vouchers.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (_, index) => _offerCard(vouchers[index], index),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Container(
-                height: 180,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE9D864),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Du lịch',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF0E3A91),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text(
-                      'Úc',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF0E3A91),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      'Giảm đến',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF0E3A91),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      '50%',
-                      style: TextStyle(
-                        fontSize: 24,
-                        color: Color(0xFF0E3A91),
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ],
+    );
+  }
+}
+
+class _VoucherPromotionDetailPage extends StatelessWidget {
+  const _VoucherPromotionDetailPage({
+    required this.voucher,
+    required this.imageAsset,
+  });
+
+  final Voucher voucher;
+  final String imageAsset;
+
+  String get _discount => voucher.discountType.toLowerCase() == 'percent'
+      ? '${voucher.discountValue.round()}%'
+      : _formatMainVnd(voucher.discountValue);
+
+  @override
+  Widget build(BuildContext context) {
+    final isPercent = voucher.discountType.toLowerCase() == 'percent';
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(title: const Text('Chi tiết ưu đãi'), backgroundColor: const Color(0xFF0E1F38), foregroundColor: Colors.white),
+      body: ListView(padding: EdgeInsets.zero, children: [
+        Image.asset(imageAsset, height: 230, fit: BoxFit.cover),
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Ưu đãi giảm $_discount', style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: Color(0xFF172536))),
+            const SizedBox(height: 10),
+            Text(isPercent ? 'Giảm ${voucher.discountValue.round()}% trên đơn hàng đủ điều kiện.' : 'Giảm ${_formatMainVnd(voucher.discountValue)} trên đơn hàng đủ điều kiện.', style: const TextStyle(fontSize: 16, height: 1.5, color: Color(0xFF4F5D6D))),
+            const SizedBox(height: 8),
+            Text('Giá trị đơn tối thiểu: ${_formatMainVnd(voucher.minOrder)}', style: const TextStyle(fontSize: 15, color: Color(0xFF4F5D6D))),
+            if (voucher.startDate != null || voucher.endDate != null) ...[
+              const SizedBox(height: 8),
+              Text('Thời hạn: ${voucher.startDate == null ? 'đang áp dụng' : _formatMainDate(voucher.startDate)} – ${_formatMainDate(voucher.endDate)}', style: const TextStyle(fontSize: 15, color: Color(0xFF4F5D6D))),
+            ],
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: const Color(0xFFF2F7FC), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFDDE8F3))),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('MÃ ƯU ĐÃI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF778391))),
+                  const SizedBox(height: 6),
+                  SelectableText(voucher.code, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF0875F5))),
+                ])),
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: voucher.code));
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã sao chép mã ưu đãi')));
+                  },
+                  icon: const Icon(Icons.copy_rounded), label: const Text('Sao chép'),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 14),
+            const Text('Nhập mã này trong ô voucher ở bước đặt phòng. Điều kiện áp dụng được hệ thống kiểm tra theo đơn hàng.', style: TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF778391))),
+            const SizedBox(height: 26),
+            const Divider(height: 1, color: Color(0xFFE8EDF3)),
+            const SizedBox(height: 24),
+            const Text('Lên kế hoạch chuyến đi thuận tiện hơn', style: TextStyle(fontSize: 20, height: 1.25, fontWeight: FontWeight.w900, color: Color(0xFF172536))),
+            const SizedBox(height: 8),
+            const Text('Một vài gợi ý hữu ích khi tìm và đặt phòng trực tuyến. Các nội dung dưới đây chỉ mang tính tham khảo, không phải điều kiện của mã ưu đãi.', style: TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF778391))),
+            const SizedBox(height: 16),
+            const _TravelBookingTip(
+              icon: Icons.event_available_rounded,
+              title: 'Chọn ngày phù hợp',
+              description: 'Xác định ngày nhận và trả phòng trước khi tìm kiếm để dễ so sánh tổng chi phí cho toàn bộ kỳ nghỉ.',
+            ),
+            const SizedBox(height: 10),
+            const _TravelBookingTip(
+              icon: Icons.location_on_outlined,
+              title: 'Ưu tiên vị trí thuận tiện',
+              description: 'Kiểm tra khu vực lưu trú so với điểm tham quan, phương tiện di chuyển và những nơi bạn dự định ghé thăm.',
+            ),
+            const SizedBox(height: 10),
+            const _TravelBookingTip(
+              icon: Icons.fact_check_outlined,
+              title: 'Đọc kỹ thông tin phòng',
+              description: 'Xem loại phòng, số khách, tiện nghi và chính sách nhận phòng trước khi xác nhận đặt chỗ.',
+            ),
+            const SizedBox(height: 10),
+            const _TravelBookingTip(
+              icon: Icons.payments_outlined,
+              title: 'So sánh tổng giá',
+              description: 'Đối chiếu giá cho toàn bộ thời gian lưu trú và kiểm tra lại thông tin khách trước khi thanh toán.',
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E8),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lightbulb_outline_rounded, color: Color(0xFFE59A00)),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Mẹo nhỏ: sau khi sao chép mã, hãy nhập mã ở bước đặt phòng và kiểm tra phần giảm giá được áp dụng trước khi thanh toán.',
+                      style: TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF66542E)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class _TravelBookingTip extends StatelessWidget {
+  const _TravelBookingTip({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8EDF3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5F1FF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: const Color(0xFF0875F5), size: 21),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF172536))),
+                const SizedBox(height: 4),
+                Text(description, style: const TextStyle(fontSize: 13, height: 1.45, color: Color(0xFF667384))),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
