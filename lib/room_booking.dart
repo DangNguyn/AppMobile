@@ -32,6 +32,9 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   SavedPaymentCard? _selectedPaymentCard;
   bool _isSubmitting = false;
   List<String> _availableRoomIds = const [];
+  Booking? _pendingBooking;
+  Payment? _pendingPayment;
+  late final Future<void> _savedPaymentCardLoad;
 
   int get _nights => widget.selection.dateRange.duration.inDays.clamp(1, 365);
   int get _nightlyRate => widget.roomType?.basePrice.round() ?? 1250000;
@@ -43,7 +46,8 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
 
   double get _total => _validatedTotalAmount ?? _subtotal - _discount;
 
-  Future<void> _createBooking() async {
+  Future<Booking?> _ensureBooking() async {
+    if (_pendingBooking != null) return _pendingBooking;
     if (widget.hotelId == null || _availableRoomIds.isEmpty || _isSubmitting) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -54,7 +58,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
           ),
         ),
       );
-      return;
+      return null;
     }
     setState(() => _isSubmitting = true);
     try {
@@ -73,55 +77,72 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         phone: _phoneController.text.trim(),
         email: _emailController.text.trim(),
       );
-      await apiRepository.createPayment(
-        bookingId: booking.id,
-        method: _selectedPaymentMethod == 'vietqr' ? 'bank_transfer' : 'online',
-        amount: _total,
-      );
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => BookingSuccessScreen(booking: booking),
-        ),
-      );
+      _pendingBooking = booking;
+      return booking;
     } on ApiException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error.message)));
       }
+      return null;
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
   Future<void> _continuePayment() async {
-    if (_selectedPaymentMethod == 'vietqr') {
-      final completed = await showModalBottomSheet<bool>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.white,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (_) => const _MockVietQrSheet(),
+    final navigator = Navigator.of(context);
+    await _savedPaymentCardLoad;
+    if (!mounted) return;
+    if (_selectedPaymentMethod == 'card' && _selectedPaymentCard == null) {
+      await _chooseNewPaymentCard();
+      if (!mounted || _selectedPaymentCard == null) return;
+    }
+    final booking = await _ensureBooking();
+    if (booking == null || !mounted) return;
+    try {
+      _pendingPayment = await apiRepository.createPayment(
+        bookingId: booking.id,
+        method: _selectedPaymentMethod == 'qr' ? 'qr' : 'card',
       );
-      if (completed == true && mounted) await _runPaymentLoading();
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+    if (_selectedPaymentMethod == 'qr') {
+      try {
+        final qr = await apiRepository.paymentQr(_pendingPayment!.id);
+        if (!navigator.mounted) return;
+        final completed = await showModalBottomSheet<bool>(
+          context: navigator.context,
+          isScrollControlled: true,
+          backgroundColor: Colors.white,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          builder: (_) => _PaymentQrSheet(
+            qrContent: '${qr['qr_content'] ?? ''}',
+          ),
+        );
+        if (completed == true && mounted) await _simulatePayment();
+      } on ApiException catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(error.message)));
+        }
+      }
       return;
     }
     if (_selectedPaymentMethod == 'card') {
-      final card = await Navigator.of(context).push<SavedPaymentCard>(
-        MaterialPageRoute<SavedPaymentCard>(
-          builder: (_) => const AddPaymentCardPage(),
-        ),
-      );
-      if (card == null || !mounted) return;
-      setState(() => _selectedPaymentCard = card);
-      await _runPaymentLoading();
+      await _simulatePayment();
       return;
     }
   }
 
-  Future<void> _runPaymentLoading() async {
+  Future<void> _simulatePayment() async {
     if (!mounted) return;
     showDialog<void>(
       context: context,
@@ -131,7 +152,46 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
     Navigator.of(context).pop();
-    await _createBooking();
+    try {
+      final payment = await apiRepository.simulatePayment(
+        paymentId: _pendingPayment!.id,
+        result: 'success',
+      );
+      if (payment.status.toLowerCase() != 'paid') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Thanh toán chưa được xác nhận. Đơn vẫn đang chờ xử lý.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.statusCode == 500) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cổng thanh toán chưa xác nhận giao dịch. Đơn vẫn đang chờ xử lý; vui lòng thử lại sau.',
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+        return;
+      }
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement<void, void>(
+      MaterialPageRoute<void>(
+        builder: (_) => BookingSuccessScreen(booking: _pendingBooking!),
+      ),
+    );
   }
 
   String _dateOnly(DateTime value) =>
@@ -141,6 +201,28 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   void initState() {
     super.initState();
     _loadAvailableRooms();
+    _savedPaymentCardLoad = _loadSavedPaymentCard();
+  }
+
+  Future<void> _loadSavedPaymentCard() async {
+    final cards = await SavedPaymentCardStore.loadCards();
+    if (!mounted || cards.isEmpty) return;
+    setState(() => _selectedPaymentCard = cards.first);
+  }
+
+  Future<void> _chooseNewPaymentCard() async {
+    final card = await Navigator.of(context).push<SavedPaymentCard>(
+      MaterialPageRoute<SavedPaymentCard>(
+        builder: (_) => const AddPaymentCardPage(
+          submitLabel: 'Dùng thẻ này',
+        ),
+      ),
+    );
+    if (card != null && mounted) {
+      await SavedPaymentCardStore.saveCard(card);
+      if (!mounted) return;
+      setState(() => _selectedPaymentCard = card);
+    }
   }
 
   Future<void> _loadAvailableRooms() async {
@@ -566,7 +648,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         ),
         const SizedBox(height: 10),
         _paymentOption(
-          id: 'vietqr',
+          id: 'qr',
           title: 'VietQR',
           subtitle: 'Quét mã bằng ứng dụng ngân hàng',
           icon: Icons.qr_code_2_rounded,
@@ -581,6 +663,35 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
           icon: Icons.credit_card_rounded,
           color: const Color(0xFF34495E),
         ),
+        if (_selectedPaymentMethod == 'card') ...[
+          if (_selectedPaymentCard != null)
+            Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              color: const Color(0xFFF4F8FE),
+              child: ListTile(
+                leading: const Icon(Icons.credit_card_rounded),
+                title: Text(
+                  '${_selectedPaymentCard!.cardType} •••• ${_selectedPaymentCard!.lastFour}',
+                ),
+                subtitle: Text(
+                  '${_selectedPaymentCard!.holder} · Hết hạn ${_selectedPaymentCard!.expiry}',
+                ),
+                trailing: TextButton(
+                  onPressed: _chooseNewPaymentCard,
+                  child: const Text('Đổi thẻ'),
+                ),
+              ),
+            )
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _chooseNewPaymentCard,
+                icon: const Icon(Icons.add_card_rounded),
+                label: const Text('Nhập thẻ mới'),
+              ),
+            ),
+        ],
         _bookingSection(
           title: 'Mã giảm giá',
           icon: Icons.confirmation_number_outlined,
@@ -625,7 +736,6 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         borderRadius: BorderRadius.circular(14),
         onTap: () => setState(() {
           _selectedPaymentMethod = id;
-          if (id != 'card') _selectedPaymentCard = null;
         }),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),

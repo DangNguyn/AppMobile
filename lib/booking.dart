@@ -17,29 +17,46 @@ class _BookingPageState extends State<BookingPage> {
   }
 
   Future<List<Booking>> _loadBookings() async {
-    final bookings = await apiRepository.bookings();
+    final results = await Future.wait<dynamic>([
+      apiRepository.bookings(),
+      apiRepository.me(),
+    ]);
+    final bookings = results[0] as List<Booking>;
+    final profile = results[1] as ApiUser;
+    final profileGuest = BookingGuest(
+      fullName: profile.fullName,
+      phone: profile.phone,
+      email: profile.email,
+    );
     return Future.wait(bookings.map((booking) async {
-      final results = await Future.wait([
+      final detailResults = await Future.wait([
         apiRepository.booking(booking.id),
-        apiRepository.hotel(booking.hotelId),
         apiRepository.bookingGuests(booking.id),
       ]);
-      final detail = results[0] as Booking;
-      final hotel = results[1] as Hotel;
-      final guests = results[2] as List<BookingGuest>;
-      String? roomTypeName;
-      final roomTypeId =
-          detail.rooms.isEmpty ? null : detail.rooms.first.roomTypeId;
-      if (roomTypeId != null) {
-        roomTypeName = (await apiRepository.roomType(roomTypeId)).name;
-      }
+      final detail = detailResults[0] as Booking;
+      final guests = detailResults[1] as List<BookingGuest>;
       return booking.copyWith(
         rooms: detail.rooms,
-        hotelName: hotel.name,
-        roomTypeName: roomTypeName,
-        guest: guests.isEmpty ? null : guests.first,
+        hotelName: booking.hotelName,
+        roomTypeName:
+            booking.rooms.isEmpty ? null : booking.rooms.first.roomType,
+        guest: guests.isEmpty ? profileGuest : guests.first,
+        paymentStatus: booking.paymentStatus,
+        paymentMethod: booking.paymentMethod,
       );
     }));
+  }
+
+  Future<void> _openBooking(Booking booking) async {
+    final navigator = Navigator.of(context);
+    final shouldReload = await navigator.push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => BookingDetailPage(booking: booking),
+      ),
+    );
+    if (shouldReload == true && mounted) {
+      setState(() => _bookings = _loadBookings());
+    }
   }
 
   @override
@@ -192,11 +209,7 @@ class _BookingPageState extends State<BookingPage> {
                   final booking = bookings[index];
                   return _BookingCard(
                     booking: booking,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => BookingDetailPage(booking: booking),
-                      ),
-                    ),
+                    onTap: () => _openBooking(booking),
                   );
                 },
               );
@@ -216,7 +229,7 @@ class _BookingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = _bookingStatus(booking.status);
+    final status = _bookingStatus(booking.status, booking.paymentStatus);
     return Card(
       elevation: 0,
       clipBehavior: Clip.antiAlias,
@@ -243,7 +256,7 @@ class _BookingCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              Text(booking.roomTypeName ?? 'Phòng đã đặt'),
+              Text(_roomSummary(booking)),
               const SizedBox(height: 6),
               Text('${booking.checkIn} - ${booking.checkOut}'),
               const SizedBox(height: 6),
@@ -271,7 +284,7 @@ class BookingDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = _bookingStatus(booking.status);
+    final status = _bookingStatus(booking.status, booking.paymentStatus);
     final guest = booking.guest;
     return Scaffold(
       appBar: AppBar(title: const Text('Chi tiết đơn đặt phòng')),
@@ -282,13 +295,23 @@ class BookingDetailPage extends StatelessWidget {
               style:
                   const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
-          Text(booking.roomTypeName ?? 'Phòng đã đặt'),
+          Text(_roomSummary(booking)),
           const Divider(height: 28),
           _detailLine('Mã đặt phòng', booking.bookingCode ?? booking.id),
           _detailLine('Lịch trình', '${booking.checkIn} - ${booking.checkOut}'),
           _detailLine(
               'Tổng thanh toán', _formatBookingMoney(booking.totalAmount)),
           _detailLine('Trạng thái', '${status.icon} ${status.label}'),
+          if (booking.paymentStatus != null)
+            _detailLine(
+                'Thanh toán', _paymentStatusLabel(booking.paymentStatus!)),
+          if (booking.status.toLowerCase() == 'pending' &&
+              booking.paymentStatus?.toLowerCase() != 'paid')
+            FilledButton.icon(
+              onPressed: () => _retryPayment(context),
+              icon: const Icon(Icons.lock_outline_rounded),
+              label: const Text('Thanh toán lại'),
+            ),
           if (guest != null) ...[
             const Divider(height: 28),
             const Text('Thông tin người đặt',
@@ -297,9 +320,119 @@ class BookingDetailPage extends StatelessWidget {
             _detailLine('Số điện thoại', guest.phone ?? 'Chưa cập nhật'),
             _detailLine('Email', guest.email ?? 'Chưa cập nhật'),
           ],
+          if (booking.status.toLowerCase() == 'confirmed')
+            OutlinedButton.icon(
+              onPressed: () => _showCheckInQr(context),
+              icon: const Icon(Icons.qr_code_2_rounded),
+              label: const Text('Mã QR Check-in'),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _retryPayment(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final cards = await SavedPaymentCardStore.loadCards();
+      SavedPaymentCard? card;
+      if (cards.length == 1) {
+        card = cards.first;
+      } else if (cards.length > 1 && navigator.mounted) {
+        card = await showModalBottomSheet<SavedPaymentCard>(
+          context: navigator.context,
+          builder: (sheetContext) => SafeArea(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const ListTile(title: Text('Chọn thẻ thanh toán')),
+                for (final savedCard in cards)
+                  ListTile(
+                    leading: const Icon(Icons.credit_card_rounded),
+                    title: Text(
+                      '${savedCard.cardType} •••• ${savedCard.lastFour}',
+                    ),
+                    subtitle: Text(savedCard.holder),
+                    onTap: () => Navigator.pop(sheetContext, savedCard),
+                  ),
+              ],
+            ),
+          ),
+        );
+      }
+      if (card == null && navigator.mounted) {
+        card = await navigator.push<SavedPaymentCard>(
+          MaterialPageRoute<SavedPaymentCard>(
+            builder: (_) => const AddPaymentCardPage(
+              submitLabel: 'Dùng thẻ này',
+            ),
+          ),
+        );
+      }
+      if (card == null || !navigator.mounted) return;
+
+      final payment = await apiRepository.createPayment(
+        bookingId: booking.id,
+        method: 'card',
+      );
+      if (!navigator.mounted) return;
+      showDialog<void>(
+        context: navigator.context,
+        barrierDismissible: false,
+        builder: (_) => const _PaymentLoadingDialog(),
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!navigator.mounted) return;
+      navigator.pop();
+
+      final result = await apiRepository.simulatePayment(
+        paymentId: payment.id,
+        result: 'success',
+      );
+      if (result.status.toLowerCase() != 'paid') {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Thanh toán chưa được xác nhận. Đơn vẫn đang chờ.'),
+          ),
+        );
+        return;
+      }
+      if (!navigator.mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Thanh toán đã được xác nhận.')),
+      );
+      navigator.pop(true);
+    } on ApiException catch (error) {
+      if (navigator.mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(error.statusCode == 500
+                ? 'Cổng thanh toán chưa xác nhận giao dịch. Đơn vẫn đang chờ xử lý.'
+                : error.message),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showCheckInQr(BuildContext context) async {
+    try {
+      final data = await apiRepository.bookingQr(booking.id);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Mã QR Check-in'),
+          content: SelectableText('${data['qr_token'] ?? ''}'),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
   }
 
   Widget _detailLine(String label, String value) => Padding(
@@ -326,7 +459,29 @@ class _BookingStatus {
   final Color color;
 }
 
-_BookingStatus _bookingStatus(String value) {
+String _roomSummary(Booking booking) {
+  if (booking.rooms.isEmpty) return booking.roomTypeName ?? 'Phòng đã đặt';
+  return booking.rooms
+      .map((room) =>
+          '${room.roomType ?? booking.roomTypeName ?? 'Phòng'} · Phòng ${room.roomNumber ?? room.roomId}')
+      .join(', ');
+}
+
+String _paymentStatusLabel(String status) {
+  switch (status.toLowerCase()) {
+    case 'paid':
+      return 'Đã thanh toán';
+    case 'failed':
+      return 'Thanh toán thất bại';
+    default:
+      return 'Đang chờ thanh toán';
+  }
+}
+
+_BookingStatus _bookingStatus(String value, String? paymentStatus) {
+  if (paymentStatus == 'paid' && value == 'pending') {
+    return const _BookingStatus('Đang chờ xác nhận', '⏳', Color(0xFFE08A00));
+  }
   switch (value.toLowerCase()) {
     case 'confirmed':
       return const _BookingStatus('Đã xác nhận', '✓', Color(0xFF168A55));
@@ -368,24 +523,6 @@ class _StatusBadge extends StatelessWidget {
                   fontWeight: FontWeight.w700)),
         ),
       );
-}
-
-class _BookingSectionHeading extends StatelessWidget {
-  final String title;
-
-  const _BookingSectionHeading({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        color: Color(0xFF202833),
-        fontSize: 20,
-        fontWeight: FontWeight.w800,
-      ),
-    );
-  }
 }
 
 class SavedPage extends StatelessWidget {

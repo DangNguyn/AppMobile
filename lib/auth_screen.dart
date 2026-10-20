@@ -220,7 +220,10 @@ class _AuthScreenState extends State<AuthScreen> {
           child: _isLoginMode ? _buildLoginForm() : _buildRegisterForm(),
         ),
       ],
-    );
+    ).animate().fadeIn(duration: AppMotion.entranceDuration).slideY(
+          begin: 0.04,
+          duration: AppMotion.entranceDuration,
+        );
   }
 
   Widget _buildModeToggle() {

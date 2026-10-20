@@ -1,397 +1,222 @@
-# Tài liệu API Hotel Booking
+# Hotel Booking REST API
 
-## 1. Tổng quan
+> Reference assembled from the handlers mounted by `src/app.js`, route SQL, auth middleware, OpenAPI and read-only metadata from the configured PostgreSQL database. Production was not called. “Route exists” describes source code, not a guarantee that a route currently succeeds against the database.
 
-- **Dự án:** Hotel Booking API
-- **Backend:** Node.js, Express.js, PostgreSQL (`pg`)
-- **Hosting:** Render (theo thông tin cung cấp)
-- **Production Base URL:** `https://hotel-booking-backend-fz9h.onrender.com`
-- **Định dạng:** JSON; gửi JSON body với `Content-Type: application/json`.
-- **Trạng thái:** Có 44 operation (method + path) trong source và OpenAPI. 7 test auth chạy thành công local với DB stub; production chưa được gọi. URL được cung cấp không phải bằng chứng rằng endpoint production đang hoạt động.
+## 1. Common details
 
-`Student App API(1).pdf` không có trong workspace. Tài liệu sử dụng tiêu chuẩn trình bày được mô tả trong yêu cầu, không tuyên bố đã đọc PDF.
+- Production base URL provided by the project: `https://hotel-booking-backend-fz9h.onrender.com` (availability not verified).
+- JSON API. Send `Content-Type: application/json` for JSON bodies. Express JSON body limit is 1 MB.
+- Protected routes use `Authorization: Bearer <JWT>`. JWT is signed with `JWT_SECRET`, contains `id`, and expires in 7 days.
+- IDs are generally opaque strings (`varchar` in PostgreSQL); `users.id` is UUID. Do not assume every ID is UUID.
+- Date fields are date-only strings `YYYY-MM-DD`. Booking overlap uses half-open intervals: `existing.check_in < requested.check_out AND existing.check_out > requested.check_in`.
+- PostgreSQL `numeric` values are commonly serialized by `pg` as strings; parse numeric strings safely in Flutter. No currency code is returned by these handlers.
+- Common response is `{ "success": true, "data": ... }`; auth responses vary. Errors generally use `{ "success": false, "message": "..." }`; no stable application error code is defined.
 
-### Nhãn
+## 2. Endpoint catalog from source
 
-- **VERIFIED FROM SOURCE:** Có implementation được đối chiếu trong repo.
-- **VERIFIED BY RUNTIME TEST:** Hành vi có test cục bộ; không đồng nghĩa production đã test.
-- **NEEDS RUNTIME TEST:** Có source implementation nhưng chưa xác minh bằng DB/Render thực tế.
-- **NOT IMPLEMENTED:** Không tìm thấy implementation tương ứng.
-- **NOT VERIFIED:** Chưa đủ căn cứ xác nhận.
-
-Các endpoint dưới đây có trạng thái **VERIFIED FROM SOURCE; NEEDS RUNTIME TEST**, trừ hành vi auth có ghi rõ test local. Không có endpoint nào được khẳng định đã chạy thành công trên Render.
-
-## 2. Bắt đầu nhanh
-
-1. `GET /` trả health message của Express, không kiểm tra PostgreSQL.
-2. Đăng ký qua `POST /api/auth/register`, hoặc đăng nhập qua `POST /api/auth/login`.
-3. Login trả JWT trong `token`; gửi `Authorization: Bearer <token>` cho route yêu cầu đăng nhập.
-4. `GET /api/hotels` lấy danh sách khách sạn; hiện không có query search/filter.
-
-```bash
-curl -X POST "https://hotel-booking-backend-fz9h.onrender.com/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"<email>","password":"<password>"}'
-```
-
-```bash
-curl "https://hotel-booking-backend-fz9h.onrender.com/api/bookings" \
-  -H "Authorization: Bearer <token>"
-```
-
-Placeholder không phải tài khoản hay dữ liệu production.
-
-## 3. Endpoint catalog
-
-Đếm theo cặp method/path: **44 source, 44 OpenAPI**. Source tồn tại không chứng minh runtime production.
-
-| Method | Endpoint | Chức năng | Authentication | Trạng thái |
+| Method | Endpoint | Auth | Request | Successful response |
 |---|---|---|---|---|
-| GET | `/` | Health message | Không | Source; needs runtime |
-| GET | `/api/test-db` | Thử kết nối PostgreSQL | Không | Source; needs runtime |
-| POST | `/api/auth/register` | Đăng ký | Không | Source; local auth test |
-| POST | `/api/auth/login` | Login, cấp JWT | Không | Source; local auth test |
-| POST | `/api/auth/logout` | Logout phía client | Bearer JWT | Source; local auth test |
-| GET | `/api/auth/me` | Hồ sơ từ token | Bearer JWT | Source; local auth test |
-| GET | `/api/users/me` | Đọc hồ sơ | Bearer JWT | Source |
-| PUT | `/api/users/me` | Sửa hồ sơ | Bearer JWT | Source |
-| GET | `/api/hotels` | Danh sách hotels | Không | Source |
-| GET | `/api/hotels/{id}` | Hotel detail | Không | Source |
-| GET | `/api/hotels/{id}/images` | Ảnh hotel | Không | Source |
-| GET | `/api/hotels/{id}/amenities` | Amenities | Không | Source |
-| GET | `/api/hotels/{id}/vibes` | Vibe tags | Không | Source |
-| GET | `/api/hotels/{id}/room-types` | Room types của hotel | Không | Source |
-| GET | `/api/hotels/{id}/reviews` | Reviews của hotel | Optional; token nếu gửi phải hợp lệ | Source |
-| POST | `/api/hotels/{id}/reviews` | Tạo review | Bearer JWT | Source |
-| GET | `/api/room-types/{id}` | Room type detail | Không | Source |
-| GET | `/api/room-types/{id}/images` | Ảnh room type | Không | Source |
-| GET | `/api/room-types/{id}/rooms` | Rooms theo room type | Không | Source |
-| GET | `/api/rooms` | Danh sách phòng/lọc | Không | Source |
-| GET | `/api/rooms/available` | Phòng trống theo ngày | Không | Source |
-| GET | `/api/rooms/{id}` | Room detail | Không | Source |
-| POST | `/api/bookings` | Tạo booking | Bearer JWT | Source |
-| GET | `/api/bookings` | Booking history | Bearer JWT | Source |
-| GET | `/api/bookings/{id}` | Booking detail | Bearer JWT | Source |
-| GET | `/api/bookings/{id}/guests` | Guest list của booking | Bearer JWT | Source |
-| POST | `/api/bookings/{id}/guests` | Thêm guest | Bearer JWT | Source |
-| GET | `/api/bookings/{id}/payments` | Payment list của booking | Bearer JWT | Source |
-| GET | `/api/bookings/{id}/qr` | QR token booking | Bearer JWT | Source |
-| PATCH | `/api/bookings/{id}/cancel` | Hủy booking | Bearer JWT | Source |
-| POST | `/api/bookings/{id}/check-in` | Check-in | Bearer JWT | Source |
-| PUT | `/api/guests/{id}` | Sửa guest | Bearer JWT | Source |
-| DELETE | `/api/guests/{id}` | Xóa guest | Bearer JWT | Source |
-| POST | `/api/payments` | Tạo payment pending | Bearer JWT | Source |
-| GET | `/api/payments/{id}` | Payment detail | Bearer JWT | Source |
-| GET | `/api/vouchers` | Voucher đang active | Không | Source |
-| POST | `/api/vouchers/validate` | Validate voucher | Không | Source |
-| GET | `/api/vouchers/{code}` | Tra voucher | Không | Source |
-| GET | `/api/favorites` | Favorite list | Bearer JWT | Source |
-| POST | `/api/favorites/{hotel_id}` | Thêm favorite | Bearer JWT | Source |
-| DELETE | `/api/favorites/{hotel_id}` | Xóa favorite | Bearer JWT | Source |
-| POST | `/api/reviews` | Tạo review, hotel ID trong body | Bearer JWT | Source |
-| PUT | `/api/reviews/{id}` | Sửa review | Bearer JWT | Source |
-| DELETE | `/api/reviews/{id}` | Xóa review | Bearer JWT | Source |
+| GET | `/` | Public | — | `{success,message}` health text |
+| GET | `/api/test-db` | Public | — | `{success,data:{current_time}}` |
+| POST | `/api/auth/register` | Public | `full_name,email,phone,password` | 201 `{success,message,user}` |
+| POST | `/api/auth/login` | Public | `email,password` | 200 `{success,token,data:user}`; see schema warning below |
+| POST | `/api/auth/logout` | JWT | — | 200 `{success,message}`; token is not revoked server-side |
+| GET | `/api/auth/me` | JWT | — | 200 `{success,data:user}` |
+| GET | `/api/users/me` | JWT | — | 200 `{success,data:user}` |
+| PUT | `/api/users/me` | JWT | `full_name?`, `phone?`, `avatar?` | 200 `{success,data:user}` |
+| GET | `/api/hotels` | Public | — | 200 `{success,data:[hotel]}` ordered by id |
+| GET | `/api/hotels/{id}` | Public | path `id` | 200 hotel; 404 if absent |
+| GET | `/api/hotels/{id}/images` | Public | path `id` | 200 `[{id,hotel_id,image_url,ordering}]` |
+| GET | `/api/hotels/{id}/amenities` | Public | path `id` | 200 `[{id,name,description}]` |
+| GET | `/api/hotels/{id}/vibes` | Public | path `id` | 200 `[{id,name,description}]` |
+| GET | `/api/hotels/{id}/room-types` | Public | path `id` | 200 room types with price/capacity |
+| GET | `/api/hotels/{id}/reviews` | Optional JWT | path `id` | 200 reviews with reviewer name/avatar |
+| POST | `/api/hotels/{id}/reviews` | JWT | `booking_id,rating,comment?` | 201 review |
+| GET | `/api/room-types/{id}` | Public | path `id` | 200 room type; 404 if absent |
+| GET | `/api/room-types/{id}/images` | Public | path `id` | 200 `[{id,room_type_id,image_url,ordering}]` |
+| GET | `/api/room-types/{id}/rooms` | Public | path `id` | 200 physical rooms |
+| GET | `/api/rooms` | Public | filters `hotel_id?`, `room_type_id?`, `status?` | 200 physical rooms |
+| GET | `/api/rooms/{id}` | Public | path `id` | 200 room; 404 if absent |
+| GET | `/api/rooms/available` | Public | `hotel_id,check_in,check_out,room_type_id?` | 200 available rooms with type, capacity and base price |
+| POST | `/api/bookings` | JWT | booking body below | 201 booking plus selected rooms |
+| GET | `/api/bookings` | JWT | — | 200 owned booking history with rooms/payment summary |
+| GET | `/api/bookings/{id}` | JWT | path `id` | 200 owned booking with rooms |
+| PATCH | `/api/bookings/{id}/cancel` | JWT | — | 200 `{data:{id,status:"cancelled"}}` |
+| POST | `/api/bookings/{id}/check-in` | JWT | — | 200 `{data:{id,status,checked_in_at}}` |
+| GET | `/api/bookings/{id}/qr` | JWT | path `id` | 200 `{booking_id,booking_code,status,qr_token}` |
+| GET | `/api/bookings/{id}/guests` | JWT | path `id` | 200 guest array |
+| POST | `/api/bookings/{id}/guests` | JWT | `full_name,phone?,email?,identification_info?` | 201 guest |
+| GET | `/api/bookings/{id}/payments` | JWT | path `id` | 200 payment array |
+| PUT | `/api/guests/{id}` | JWT | guest fields optional | 200 `{success,message,data}` |
+| DELETE | `/api/guests/{id}` | JWT | path `id` | 200 `{success,message}` |
+| POST | `/api/payments` | JWT | `booking_id,payment_method` (`card` or `qr`) | 201 pending payment; amount from DB |
+| GET | `/api/payments/{id}` | JWT | path `id` | 200 owned payment |
+| GET | `/api/payments/{id}/qr` | JWT | path `id` | 200 mock QR text, QR payments only |
+| POST | `/api/payments/{id}/simulate` | JWT + `PAYMENT_MODE=mock` | `result: success|failed` | 200 updated payment; schema blocker below |
+| GET | `/api/notifications` | JWT | — | 200 notification array in source; schema blocker below |
+| GET | `/api/vouchers` | Public | — | 200 active in-date vouchers |
+| GET | `/api/vouchers/{code}` | Public | path `code` | 200 voucher; 404 if absent |
+| POST | `/api/vouchers/validate` | Public | `code,subtotal` | 200 voucher and computed discount/total |
+| GET | `/api/favorites` | JWT | — | 200 current user’s hotel favorites |
+| POST | `/api/favorites/{hotel_id}` | JWT | path `hotel_id` | 201 `{user_id,hotel_id}` |
+| DELETE | `/api/favorites/{hotel_id}` | JWT | path `hotel_id` | 200 removal message |
+| POST | `/api/reviews` | JWT | `hotel_id,booking_id,rating,comment?` | 201 review |
+| PUT | `/api/reviews/{id}` | JWT | `rating?`, `comment?` | 200 updated review |
+| DELETE | `/api/reviews/{id}` | JWT | path `id` | 200 deletion message |
 
-Mount point: [src/app.js](src/app.js). Implementation ở [src/routes](src/routes). Không có route search hotel riêng.
+The source and `openapi.yaml` each contain 47 method/path operations including root and DB health. Their paths and methods match when Express `:id` placeholders are normalized to OpenAPI `{id}` placeholders. Route SQL and schema blockers described below still take precedence over a documented success shape. Unknown paths return 404 `{success:false,message:"API endpoint not found"}`.
 
-## 4. Authentication và tài khoản
+## 3. Request and response details
 
-### `POST /api/auth/register`
+### Authentication and profile
 
-- **Auth:** Không. **Body bắt buộc:** `email`, `password`, `full_name`, `phone`; tất cả string không rỗng. Email trim/lowercase và regex cơ bản; password tối thiểu 8 ký tự.
-- **201:** `{ "success": true, "message": "...", "user": { "id", "email", "full_name", "phone", "avatar", "created_at" } }`.
-- **Lỗi:** `400` thiếu/sai input; `409` email/phone duplicate (có thể có `errors`); `500` lỗi đăng ký.
-- Password hash bcryptjs cost 12; hash không trả về. Register không cấp token.
-- **OpenAPI lệch source:** OpenAPI yêu cầu email/password, cho full_name/phone nullable, min password 6; source bắt buộc đủ 4 trường và min 8. OpenAPI response dùng `data`, source dùng `user`.
-- **Test:** Local test xác minh register 201, validation, duplicate, bcrypt hash và không lộ hash; DB được stub, chưa xác minh production.
+#### `POST /api/auth/register`
+
+Request (all required):
 
 ```json
-{"email":"<email>","password":"<at-least-8-characters>","full_name":"<full-name>","phone":"<phone>"}
+{"full_name":"Example User","email":"user@example.test","phone":"0900000000","password":"example-password"}
 ```
 
-### `POST /api/auth/login`
+Email is trimmed/lowercased and format checked; password must be at least 8 characters. Password is bcrypt hashed and is not returned. Success is `201 {success:true,message,user:{id,email,full_name,phone,avatar,created_at}}`; invalid input `400`; duplicate email/phone `409` (may include an `errors` object); database error `500`.
 
-- **Auth:** Không. Body: `email`, `password` string không rỗng.
-- **200:** `{ "success": true, "token": "<jwt>", "data": { "id", "email", "full_name", "phone", "avatar", "created_at" } }`.
-- **Lỗi:** `400` input thiếu; `401` credentials không chính xác; `500` lỗi login hoặc thiếu cấu hình `JWT_SECRET`.
-- Token được ký từ `{id:user.id}`, `expiresIn: "7d"`; middleware yêu cầu Bearer và `id` trong payload. Không có refresh token.
-- Local test kiểm tra login/JWT, lỗi unknown email và sai password giống nhau, không lộ hash; chưa test production.
+**Runtime schema blocker:** source omits `id` in its `INSERT INTO users`; inspected schema declares `users.id uuid NOT NULL` with no default, and no users trigger was found. A valid registration is therefore expected to fail with a database error until source or schema supplies the UUID. Auth tests use a DB stub and do not validate this insert against PostgreSQL.
 
-### `POST /api/auth/logout`
+#### `POST /api/auth/login`
 
-- **Auth:** Bearer JWT; body không cần. **200:** `{success:true,message}`. **401:** token thiếu/không hợp lệ/hết hạn; **500:** JWT secret thiếu.
-- JWT stateless, không revoke phía server. Client phải xóa token; token có thể sử dụng đến khi hết hạn.
+Request `{ "email":"user@example.test", "password":"example-password" }`. Success intended by source is `200 {success:true,token,data:{id,email,full_name,phone,avatar,created_at}}`; invalid/missing body `400`; wrong credentials `401`; server/database error `500`.
 
-### `GET /api/auth/me`, `GET /api/users/me`
+**Runtime schema blocker:** login executes `UPDATE users SET last_login_at=CURRENT_TIMESTAMP`, but the current configured database metadata has no `users.last_login_at` column. The handler catches this and returns `500`; therefore successful login is **not verified against this database** (the checked-in auth tests use a DB stub). Do not treat the intended response as confirmed live behavior until backend/schema is aligned.
 
-- **Auth:** Bearer JWT. **200:** `{success:true,data:{id,email,full_name,phone,avatar,created_at}}`.
-- **Lỗi:** `401`, `404` không tìm thấy user, `500`. Hai route có chức năng đọc hồ sơ trùng nhau.
+#### `POST /api/auth/logout`, `GET /api/auth/me`, `GET /api/users/me`, `PUT /api/users/me`
 
-### `PUT /api/users/me`
+Logout requires JWT and returns a message telling the client to delete its token. JWT is stateless and remains valid until expiry. Both profile GET routes return `id,email,full_name,phone,avatar,created_at`; missing user `404`. Profile PUT accepts only `full_name`, `phone`, `avatar`; unknown body keys return `400`; supplied null keeps the existing value due to `COALESCE`; success returns updated profile.
 
-- **Auth:** Bearer JWT. **Body:** chỉ cho phép `full_name`, `phone`, `avatar`; có thể gửi rỗng. Field lạ gây `400`; null giữ nguyên giá trị cũ qua `COALESCE`.
-- **200:** `{success:true,data:{id,email,full_name,phone,avatar,created_at}}`. **Lỗi:** `400`, `401`, `404`, `500`.
+### Hotels, room types and rooms
 
-Ví dụ JavaScript:
+Hotel response fields: `id,name,description,address,city,latitude,longitude,star_rating,created_at`. Hotel list has no query filters, search or pagination. Hotel image fields are `id,hotel_id,image_url,ordering`. Hotel amenities/vibes have `id,name,description`. Room type fields: `id,hotel_id,name,description,max_guests,base_price`. Physical room fields: `id,hotel_id,room_type_id,room_number,status`.
 
-```js
-const response = await fetch(
-  "https://hotel-booking-backend-fz9h.onrender.com/api/auth/me",
-  { headers: { Authorization: `Bearer ${token}` } }
-);
-const result = await response.json();
+List/details handlers return 500 on query error; single hotel/room/room type returns 404 if no matching row. Image and association routes return empty arrays when no rows match (and 500 on database error).
+
+`GET /api/rooms` accepts optional `hotel_id`, `room_type_id`, and `status`; filters are combined with AND. No pagination. `GET /api/rooms/available` requires `hotel_id`, `check_in`, `check_out`, accepts optional `room_type_id`; date values must match `YYYY-MM-DD`, checkout later than check-in. It returns active physical rooms and excludes rooms with a booking whose status is anything other than `cancelled` when dates overlap. Response room adds `room_type_name,max_guests,base_price`. Input error `400`; query error `500`.
+
+### Booking, guests, payment history, QR and check-in
+
+#### `POST /api/bookings`
+
+JWT required. Example:
+
+```json
+{"hotel_id":"<hotel-id>","room_ids":["<room-id>"],"check_in":"2030-05-10","check_out":"2030-05-12","adults":2,"children":0,"voucher_code":"<optional-code>"}
 ```
 
-## 5. Hotels, search, images, amenities, vibes
+`hotel_id`, nonempty unique `room_ids`, dates, and `adults >= 1` are required. `children` defaults to 0. Each room must belong to that hotel and have status `active`; summed `max_guests` must cover adults + children. Price is room base price × nights. Voucher, when supplied, must be active/in validity dates and meet `min_order`; discount is capped at subtotal. The route locks room rows and checks overlap again inside a transaction. Success `201 {success:true,data:{id,booking_code,user_id,hotel_id,voucher_id,check_in,check_out,number_of_guests,subtotal,tax,discount,total_amount,status,qr_token,created_at,rooms:[{room_id,price_per_night,number_of_nights,subtotal}]}}`; initial status `pending`, tax currently set to 0. Errors: `400` invalid request/room mismatch/capacity/voucher, `401`, `404` foreign key target missing, `409` inactive or overlapping room, `500` other DB error.
 
-### `GET /api/hotels`
+#### `GET /api/bookings`
 
-- **Auth/query:** Không cần auth; implementation không đọc query.
-- **200:** `{success:true,data:[{id,name,description,address,city,latitude,longitude,star_rating,created_at}]}`, sort theo id. **500:** lỗi lấy hotels.
-- **Search/filter/pagination/sort theo query:** **NOT IMPLEMENTED**. Không gửi query city, date, price, rating, amenities, vibes với giả định chúng có tác dụng.
+Returns only rows with `bookings.user_id` equal to JWT user. Each item contains `id,booking_code,hotel_id,hotel_name,check_in,check_out,number_of_guests,subtotal,tax,discount,total_amount,status,created_at,rooms,payment_status,payment_method`. `rooms` entries contain `room_id,room_number,room_type,price_per_night,number_of_nights,subtotal`. Payment summary is the most recent paid payment if one exists, otherwise selected by `paid_at`/ID ordering. No hotel image, guest names, policy, or full payment list is embedded. `401`, `500`.
 
-### `GET /api/hotels/{id}`
+#### `GET /api/bookings/{id}`
 
-- **200:** `{success:true,data:{id,name,description,address,city,latitude,longitude,star_rating,created_at}}`.
-- **404:** không có hotel; **500:** lỗi DB. Path id truyền vào query; định dạng ID từ schema DB chưa xác minh.
+Only an owned booking is returned; response includes booking fields plus `rooms:[{room_id,price_per_night,number_of_nights,subtotal,room_number,room_type_id}]`. Unknown or another user’s ID both return `404`; DB error `500`.
 
-### `GET /api/hotels/{id}/images`
+#### Guest routes
 
-- **200:** `{success:true,data:[{id,hotel_id,image_url,ordering}]}`, sort theo ordering. Không tìm thấy hotel không nhất thiết trả 404; có thể data rỗng. **500** khi query lỗi.
+- `GET /api/bookings/{id}/guests`: first checks booking ownership; returns `{success:true,data:[{id,booking_id,full_name,phone,email,identification_info}]}`. 404 if not owned/found.
+- `POST /api/bookings/{id}/guests`: body requires truthy `full_name`, optional `phone,email,identification_info`; 201 with same fields plus generated `id,booking_id`; 400 missing name, 404 booking missing/not owned, 500 DB error.
+- `PUT /api/guests/{id}`: optional `full_name,phone,email,identification_info`; updates only guest attached to a booking owned by user. Null/omitted values keep existing values. Returns `{success:true,message,data}` using `RETURNING *`; 404 if not owned/found, 500 DB error. No explicit field validation.
+- `DELETE /api/guests/{id}`: removes only guest attached to an owned booking; 200 message, 404 not found/not owned, 500 DB error.
 
-### `GET /api/hotels/{id}/amenities`, `GET /api/hotels/{id}/vibes`
+#### Booking payment list and booking QR
 
-- **200:** `{success:true,data:[{id,name,description}]}`; cả hai sort theo name. **500** khi DB lỗi; không kiểm tra hotel existence riêng.
+- `GET /api/bookings/{id}/payments`: returns `{success:true,data:[{id,booking_id,payment_method,transaction_id,amount,status,paid_at}]}` for an owned booking. 404 if booking not owned/found, 500 on DB error.
+- `GET /api/bookings/{id}/qr`: returns `{success:true,data:{booking_id,booking_code,status,qr_token}}` for an owned booking; 404 otherwise. This token is a booking/check-in value, not evidence of payment.
+- `PATCH /api/bookings/{id}/cancel`: no body. Only `pending` or `confirmed` can become `cancelled`; 200 result, 404 unknown/not owned, 409 existing booking in an ineligible state, 500.
+- `POST /api/bookings/{id}/check-in`: no body. Requires owned booking with `status=confirmed` and `check_in=CURRENT_DATE`; success returns `{id,status:"checked_in",checked_in_at}`; 404 unknown/not owned; 409 ineligible status/date; 500.
 
-Ảnh, amenities, vibes, room types được cung cấp bởi endpoint riêng. Không thấy API riêng cho hotel search/filter.
+### Payment routes
 
-## 6. Room types, rooms, availability
+#### `POST /api/payments`
 
-### `GET /api/hotels/{id}/room-types`
+JWT required. Body only needs `booking_id` and `payment_method` (`card` or `qr`). Client amount, if present, is ignored. Server locks the owned booking and uses `bookings.total_amount`; rejects terminal booking states and an already-paid booking. Success `201 {success:true,data:{id,booking_id,payment_method,transaction_id,amount,status:"pending",paid_at:null}}`; invalid body `400`, missing/not-owned booking `404`, ineligible/already-paid booking `409`, DB error `500`. This is a pending mock record, not a charge.
 
-- **200:** `{success:true,data:[{id,hotel_id,name,description,max_guests,base_price}]}`. **500** nếu DB lỗi; kết quả rỗng không phải 404.
+#### `GET /api/payments/{id}`
 
-### `GET /api/room-types/{id}`
+JWT required; only payment on owned booking is exposed. 200 data `{id,booking_id,payment_method,transaction_id,amount,status,paid_at}`; 404 not found/not owned; 500 DB error.
 
-- **200:** `{success:true,data:{id,hotel_id,name,description,max_guests,base_price}}`; **404**, **500**.
+#### `GET /api/payments/{id}/qr`
 
-### `GET /api/room-types/{id}/images`
+JWT required; only an owned payment using `qr` can retrieve QR data. Response:
 
-- **200:** `{success:true,data:[{id,room_type_id,image_url,ordering}]}` theo ordering; **500**.
-
-### `GET /api/room-types/{id}/rooms`
-
-- **200:** `{success:true,data:[{id,hotel_id,room_type_id,room_number,status}]}` theo room_number; **500**.
-
-### `GET /api/rooms`
-
-- Query tùy chọn: `hotel_id`, `room_type_id`, `status`; filter được nối AND. **200:** `{success:true,data:[{id,hotel_id,room_type_id,room_number,status}]}`. **500**.
-
-### `GET /api/rooms/{id}`
-
-- **200:** cùng object room ở trên; **404** không tìm thấy; **500**.
-
-### `GET /api/rooms/available`
-
-- Query bắt buộc: `hotel_id`, `check_in`, `check_out` (`YYYY-MM-DD`); `room_type_id` tùy chọn. Checkout phải sau checkin.
-- **200:** `{success:true,data:[{id,hotel_id,room_type_id,room_number,status,room_type_name,max_guests,base_price}]}`.
-- Chỉ chọn room `active`; loại các room có booking khác overlap, trừ status cancelled. **400** input/ngày sai; **500** DB lỗi.
-- Đây là truy vấn availability; booking vẫn tự kiểm tra overlap trong transaction. Đồng thời/concurrency cần runtime test.
-
-## 7. Booking, history, check-in
-
-Tất cả route `/api/bookings` dùng `requireAuth`.
-
-### `POST /api/bookings`
-
-- Body bắt buộc: `hotel_id`, `room_ids` (mảng không rỗng, không trùng), `check_in`, `check_out`, `adults` (integer >= 1). `children` mặc định 0, nếu gửi phải integer >= 0; `voucher_code` tùy chọn.
-- Validation: ngày `YYYY-MM-DD`, checkout sau checkin; các phòng thuộc hotel, active, không overlap booking chưa canceled; tổng khách không quá tổng sức chứa. Giá = base_price * số đêm. Voucher phải active/trong ngày hợp lệ và đạt min_order; discount không vượt subtotal.
-- **201:** `{success:true,data:{id,booking_code,user_id,hotel_id,voucher_id,check_in,check_out,adults,children,subtotal,discount_amount,total_amount,status,qr_token,created_at,rooms:[{room_id,price_per_night,number_of_nights,subtotal}]}}`; status ban đầu `pending`.
-- **Lỗi:** `400` input/ownership/capacity/voucher; `401`; `404` liên kết DB không tồn tại; `409` room inactive/overlap; `500` lỗi khác.
-- OpenAPI BookingRoom khai báo thêm room_number/room_type_id tùy chọn; response tạo booking hiện không trả hai field này.
-
-```bash
-curl -X POST "https://hotel-booking-backend-fz9h.onrender.com/api/bookings" \
-  -H "Content-Type: application/json" -H "Authorization: Bearer <token>" \
-  -d '{"hotel_id":"<hotel-id>","room_ids":["<room-id>"],"check_in":"2030-05-10","check_out":"2030-05-12","adults":2,"children":0}'
+```json
+{"success":true,"data":{"payment_id":"<payment-id>","booking_id":"<booking-id>","booking_code":"<booking-code>","amount":"2500.00","payment_status":"pending","qr_content":"THANH TOAN BOOKING <booking-id>"}}
 ```
 
-Ngày chỉ minh họa format, không xác nhận phòng trống.
+404 payment not found/not owned; 409 if method is not `qr`; 500 DB error. The string is demo text, not bank transfer instructions.
 
-### `GET /api/bookings`
+#### `POST /api/payments/{id}/simulate`
 
-- **200:** `{success:true,data:[{id,booking_code,user_id,hotel_id,voucher_id,check_in,check_out,adults,children,subtotal,discount_amount,total_amount,status,created_at}]}`, của user đang đăng nhập, mới nhất trước.
-- **401**, **500**.
+JWT required and server must have `PAYMENT_MODE=mock`; otherwise `403`. Body `{"result":"success"}` or `{"result":"failed"}`; invalid input `400`; payment missing/not owned `404`; already finished or booking ineligible/already paid `409`. Success is intended to set payment `paid`, set pending booking to `confirmed`, and create notification in the same transaction. Failure sets payment `failed`, leaves booking status unchanged (`pending` for normal pending booking). Response on transaction success is `{success:true,data:<updated payment>}`.
 
-### `GET /api/bookings/{id}`
+**Current schema blocker:** the connected database has no `notifications` table. The checked-in migration defines `content`, while the route inserts `message` (and GET notifications also selects `message`). Consequently the success branch cannot complete against the currently inspected database/migration pair; its transaction rolls back and returns 500. Do not rely on mock success until backend/schema are aligned and integration-tested. Failure branch does not insert notification.
 
-- **200:** Booking thuộc user (gồm `qr_token`, `checked_in_at`) cộng `rooms:[{room_id,price_per_night,number_of_nights,subtotal,room_number,room_type_id}]`.
-- **401**, **404** nếu không thuộc user/không tồn tại, **500**.
+#### `GET /api/notifications`
 
-### `PATCH /api/bookings/{id}/cancel`
+JWT required in source, returns rows `{id,user_id,booking_id,title,message,type,created_at,is_read}` scoped to current user. It is a route but **not verified as operational**: there is no notifications table in the configured DB metadata and the migration/source column mismatch above. Runtime DB error maps to 500.
 
-- Không body. **200:** `{success:true,data:{id,status:"cancelled"}}`.
-- Chỉ status pending hoặc confirmed được hủy. **401**, **404**, **409** không đủ điều kiện, **500**.
+### Vouchers, favorites and reviews
 
-### `GET /api/bookings/{id}/qr`
+- `GET /api/vouchers`: public; returns vouchers `id,code,discount_type,discount_value,min_order,start_date,end_date,status` filtered to active and current date within validity. `500` on DB error.
+- `GET /api/vouchers/{code}`: case-insensitive lookup; may return inactive/expired voucher. `200` data as above, `404` absent, `500` DB error.
+- `POST /api/vouchers/validate`: public body `{ "code":"<code>", "subtotal":2500 }`. Returns `{success:true,data:{voucher,discount_amount,total_amount}}`. Discount uses percentage for type `percent`, otherwise fixed; capped at subtotal. `400` invalid/inactive/outside validity/below minimum, `404` missing code, `500` DB error. This endpoint previews a discount; booking creation validates again.
+- `GET /api/favorites`: JWT; returns current user’s hotels as `id,name,description,address,city,star_rating`.
+- `POST /api/favorites/{hotel_id}`: JWT, no body; 201 `{user_id,hotel_id}`, 404 hotel not found, 409 already favorite.
+- `DELETE /api/favorites/{hotel_id}`: JWT; 200 message, 404 if absent.
+- `GET /api/hotels/{id}/reviews`: public without token; optional bearer must still be valid. Returns newest-first `id,user_id,hotel_id,booking_id,rating,comment,created_at,full_name,avatar`; 500 DB error.
+- `POST /api/hotels/{id}/reviews`: JWT body `{booking_id,rating,comment?}`. Rating integer 1–5 (route converts with `Number`). Booking must belong to user and hotel and have status `completed` or `checked_in`; success 201 review; 400 invalid fields, 403 booking not eligible, 409 one review already exists, 500 DB error.
+- `POST /api/reviews`: same rules, but body also requires `hotel_id`; FK failure 404; duplicate 409.
+- `PUT /api/reviews/{id}`: JWT, requires `rating` or `comment`; rating 1–5 if supplied. Updates only own review. 200 review, 400 invalid/empty request, 404 missing/not owned, 500 DB error. Null comment is coalesced to existing value, so this route cannot clear comment to SQL NULL.
+- `DELETE /api/reviews/{id}`: JWT; deletes only own review. 200 message, 404 missing/not owned, 500 DB error.
 
-- **200:** `{success:true,data:{booking_id,booking_code,status,qr_token}}`; **401**, **404**, **500**. Backend trả data để client encode QR, không thấy route tạo ảnh QR.
+## 4. Booking and availability model from SQL
 
-### `POST /api/bookings/{id}/check-in`
+The configured schema metadata confirms `bookings.id` and room/hotel IDs are `varchar`, `bookings.user_id` is `uuid`; `booking_rooms` links a booking to one or more physical `rooms` through `room_id`. A room has `room_type_id`, and `room_types` supplies `max_guests` and `base_price`. A booking can contain multiple physical rooms. `payments.booking_id` references booking ID; `payments.amount` is numeric and `paid_at` nullable.
 
-- Không body. **200:** `{success:true,data:{id,status:"checked_in",checked_in_at}}`.
-- Chỉ booking confirmed, thuộc user và check_in bằng CURRENT_DATE. **401**, **404**, **409** nếu tồn tại nhưng chưa đủ điều kiện, **500**.
+Availability checks room-level overlaps, not inventory counts by room type. SQL treats every booking except `cancelled` as occupying dates. Thus `pending` bookings (including one whose payment failed) block dates; there is no expiry. Creation locks the selected room rows and rechecks overlap in a transaction. Date intervals use `[check_in,check_out)` semantics. `GET /api/rooms/available` exists; there is no hotel search/filter/pagination endpoint.
 
-## 8. Guests
+## 5. Schema and runtime verification notes
 
-### `GET /api/bookings/{id}/guests`
+The configured PostgreSQL schema was read without changing data. Relevant observed columns include:
 
-- Booking phải thuộc user. **200:** `{success:true,data:[{id,booking_id,full_name,phone,email,identification_info}]}`; **401**, **404**, **500**.
+- `bookings`: `id varchar`, `booking_code varchar`, `user_id uuid`, `hotel_id varchar`, `voucher_id varchar nullable`, `check_in/out date`, `number_of_guests integer`, `subtotal/tax/discount/total_amount numeric`, `status varchar`, `qr_token text nullable`, `checked_in_at`, `created_at`.
+- `booking_rooms`: `booking_id varchar`, `room_id varchar`, `price_per_night numeric`, `number_of_nights integer`, `subtotal numeric`.
+- `payments`: `id varchar`, `booking_id varchar`, `payment_method varchar nullable`, `transaction_id varchar nullable`, `amount numeric`, `status varchar`, `paid_at timestamp nullable`; DB check permits `pending,paid,failed,refunded`.
+- `users`: `id uuid`, `email`, `full_name`, `phone`, `avatar`, `created_at`, `password_hash`. No `last_login_at` column was present.
+- No `notifications` table was present.
 
-### `POST /api/bookings/{id}/guests`
+SQL/runtime mismatches that affect integration:
 
-- Body: `full_name` bắt buộc/truthy; `phone`, `email`, `identification_info` tùy chọn.
-- **201:** `{success:true,data:{id,booking_id,full_name,phone,email,identification_info}}`; **400**, **401**, **404**, **500**.
+1. Register omits `users.id`; database metadata shows no UUID default and no users trigger. Login updates absent `users.last_login_at`. Both auth writes need source/schema alignment.
+2. Notifications route expects `message`; `migrations/001_create_notifications.sql` defines `content`; schema has no table. Mock payment success performs notification insert in the same transaction and therefore fails until aligned/applied.
+3. The notification migration is a source file, not evidence it has been applied. Do not treat the notification endpoints as verified operational APIs.
 
-### `PUT /api/guests/{id}`
+Other endpoints are documented as implemented source handlers, but they have not all been exercised end-to-end against production. `npm test` only covers auth using test doubles, not production database behavior.
 
-- Body tùy chọn: `full_name`, `phone`, `email`, `identification_info`; null/undefined giữ nguyên do COALESCE.
-- **200:** `{success:true,message,data}`. Code dùng `RETURNING *`; cột phụ thuộc DB ngoài các field trên **NOT VERIFIED**. **401**, **404**, **500**.
+## 6. Errors and Postman
 
-### `DELETE /api/guests/{id}`
+Common known codes: `400` request/body validation; `401` missing/invalid/expired JWT (or bad login credentials); `403` review booking eligibility or mock mode disabled; `404` resource absent/not owned; `409` duplicate/state conflict/availability conflict; `500` DB or unhandled server error. `requireAuth` also returns 500 if `JWT_SECRET` is unset. Malformed JSON gets global `400 {success:false,message:"Invalid JSON request body"}`. Error message text is not uniform, and no stable error code field exists.
 
-- **200:** `{success:true,message}`; chỉ xóa guest thuộc booking của user. **401**, **404**, **500**.
+Postman setup: collection variable `baseUrl` set to the provided URL; set JSON content type for bodies; use Bearer Token only on routes marked JWT. Login/register mutate user data; booking/payment/favorite/review routes mutate records. Use disposable test accounts and a non-production environment for mutation flows. Do not send real payment data. No Postman collection has been inspected, and no production request was made.
 
-## 9. Payments
+Safe smoke flow on a test environment after addressing blockers: register/login; list hotels and room types; query availability; create booking; verify booking detail/history; create QR payment; get QR text; simulate failure and check pending booking; then, only after notifications schema/source are corrected, simulate success and inspect payment, booking, notification. Check ownership with a second test user and expect 404.
 
-### `POST /api/payments`
+## 7. Configuration names (values omitted)
 
-- Auth bắt buộc. Body: `booking_id`, `payment_method` thuộc `cash|bank_transfer|online`, `amount` hữu hạn > 0.
-- Booking phải thuộc user, amount bằng total_amount; canceled/completed/no_show không được thanh toán.
-- **201:** `{success:true,data:{id,booking_id,payment_method,transaction_id,amount,status:"pending",paid_at:null},message}`.
-- **400**, **401**, **404**, **409**, **500**.
-- Payment provider, thu tiền, callback/webhook, đổi sang paid và refund: **NOT IMPLEMENTED/NOT VERIFIED** trong routes. `201` không có nghĩa payment thành công.
+`src/config/db.js` reads `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` and enables SSL with `rejectUnauthorized:false`. JWT middleware reads `JWT_SECRET`. Mock simulate checks `PAYMENT_MODE=mock`. No values from `.env` are included here. FCM configuration was not found in inspected source.
 
-### `GET /api/payments/{id}`
+## 8. Related files
 
-- **200:** `{success:true,data:{id,booking_id,payment_method,transaction_id,amount,status,paid_at}}`, chỉ payment thuộc booking user. **401**, **404**, **500**.
-
-### `GET /api/bookings/{id}/payments`
-
-- **200:** `{success:true,data:[{id,booking_id,payment_method,transaction_id,amount,status,paid_at}]}`. **401**, **404**, **500**.
-
-## 10. Vouchers
-
-### `GET /api/vouchers`
-
-- Public. **200:** danh sách `{id,code,discount_type,discount_value,min_order,start_date,end_date,status}`, chỉ active và trong thời hạn. **500**.
-
-### `GET /api/vouchers/{code}`
-
-- **200:** `{success:true,data:{id,code,discount_type,discount_value,min_order,start_date,end_date,status}}`; không phân biệt hoa thường, có thể trả inactive. **404**, **500**.
-
-### `POST /api/vouchers/validate`
-
-- Body: `code` truthy, `subtotal` số hữu hạn >= 0.
-- **200:** `{success:true,data:{voucher,discount_amount,total_amount}}`.
-- **400:** input, trạng thái/thời hạn hoặc min_order không đạt; **404** code không có; **500**. Percent discount tính theo tỷ lệ; kiểu khác dùng số fixed; discount tối đa subtotal.
-
-## 11. Favorites
-
-### `GET /api/favorites`
-
-- Auth. **200:** `{success:true,data:[{id,name,description,address,city,star_rating}]}`; **401**, **500**.
-
-### `POST /api/favorites/{hotel_id}`
-
-- Auth, không body. **201:** `{success:true,data:{user_id,hotel_id}}`; **401**, **404** hotel không tồn tại, **409** đã favorite, **500**.
-
-### `DELETE /api/favorites/{hotel_id}`
-
-- Auth. **200:** `{success:true,message}`; **401**, **404** favorite không tồn tại, **500**.
-
-## 12. Reviews
-
-### `GET /api/hotels/{id}/reviews`
-
-- Optional auth; nếu gửi bearer thì phải hợp lệ. **200:** `{success:true,data:[{id,user_id,hotel_id,booking_id,rating,comment,created_at,full_name,avatar}]}` mới trước. **401** token sai, **500**.
-
-### `POST /api/hotels/{id}/reviews`
-
-- Auth. Body: `booking_id`, `rating` integer sau Number conversion, 1..5; `comment` tùy chọn.
-- Booking phải thuộc user, đúng hotel, status completed hoặc checked_in; mỗi booking tối đa một review theo unique conflict.
-- **201:** `{success:true,data:{id,user_id,hotel_id,booking_id,rating,comment,created_at}}`; **400**, **401**, **403**, **409**, **500**.
-
-### `POST /api/reviews`
-
-- Auth. Body: `hotel_id`, `booking_id`, `rating` (1..5); `comment` tùy chọn.
-- Tạo review như route trên; **400**, **401**, **403**, **404** FK, **409**, **500**.
-
-### `PUT /api/reviews/{id}`
-
-- Auth. Body phải có `rating` hoặc `comment`; rating nếu gửi 1..5.
-- **200:** `{success:true,data:{id,user_id,hotel_id,booking_id,rating,comment,created_at}}`; **400**, **401**, **404** review không thuộc user/không tồn tại, **500**.
-
-### `DELETE /api/reviews/{id}`
-
-- Auth. **200:** `{success:true,message}`; **401**, **404**, **500**.
-
-## 13. Chức năng thiếu/chưa xác minh
-
-| Chức năng | Trạng thái | Căn cứ |
-|---|---|---|
-| Hotel search/filter/pagination | NOT IMPLEMENTED | Hotel list không đọc query; không route search |
-| Hotel/room images, amenities, vibes | Source; NEEDS RUNTIME TEST | GET routes có trong source |
-| Availability, booking, history, check-in | Source; NEEDS RUNTIME TEST | Có handlers; chưa có DB runtime test |
-| Refresh token/rotation/revocation | NOT IMPLEMENTED | Không có flow; logout không revoke JWT |
-| Payment provider/webhook/confirmation/refund | NOT IMPLEMENTED trong code đã kiểm tra | Payment POST tạo pending |
-| DB migrations/schema | NOT VERIFIED | Không tìm thấy SQL/migration file |
-| Production endpoint availability | NEEDS RUNTIME TEST | Chưa gọi Render; không ghi dữ liệu production |
-
-## 14. HTTP status và errors
-
-Không có application error code riêng trong JSON được kiểm tra. Nhiều route trả `{success:false,message}`; duplicate register có thể thêm `errors`. Message tiếng Anh/Việt và schema không đồng nhất.
-
-| HTTP | Ý nghĩa có bằng chứng |
-|---|---|
-| 200 | GET/PUT/PATCH/DELETE thành công tùy route, logout/profile |
-| 201 | Register, booking, guest, pending payment, favorite, review |
-| 400 | Validation/body/query/date sai hoặc malformed JSON |
-| 401 | Auth thiếu/sai/hết hạn; login credentials sai |
-| 403 | Review không có booking đủ điều kiện |
-| 404 | Resource không có/không thuộc user; route lạ |
-| 409 | Duplicate/conflict state, phòng inactive/overlap |
-| 500 | DB/server; JWT secret thiếu cũng trả 500 ở middleware |
-
-Route lạ trả `{success:false,message:"API endpoint not found"}`. Global error middleware trả malformed JSON: `400 {success:false,message:"Invalid JSON request body"}`; lỗi khác: `500 {success:false,message:"Internal server error"}`. Route handlers thường bắt riêng và dùng message khác.
-
-## 15. Postman
-
-1. Tạo collection `Hotel Booking API`.
-2. Tạo collection variable `baseUrl` = `https://hotel-booking-backend-fz9h.onrender.com`.
-3. Dùng URL `{{baseUrl}}/api/...` và method từ endpoint catalog.
-4. JSON body: **Body > raw > JSON**, chỉ gửi field đã xác minh.
-5. Lấy `token` từ login; với endpoint có auth chọn **Authorization > Bearer Token**.
-6. Kiểm tra HTTP status, response body và token. Payment response 201 vẫn là `pending`.
-7. Không gửi mutation lên production chỉ để thử nếu chưa có tài khoản/dữ liệu test được cấp. Chưa có bằng chứng Postman đã được sử dụng.
-
-## 16. Bảo mật
-
-**Đã xác minh:** password hash bcrypt cost 12; JWT dùng biến môi trường `JWT_SECRET`, expires 7d; DB config đọc tên biến `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`; `src/config/db.js` đặt `rejectUnauthorized:false`; `cors()` không chỉ định allowlist; logout không revoke token. Không có giá trị `.env` nào được đưa vào tài liệu.
-
-**Khuyến nghị:** không hardcode/log secrets, password, token hoặc PII; không lưu password; Flutter dùng secure storage và HTTPS. Nên đánh giá xác minh certificate TLS của PostgreSQL do cấu hình hiện tại tắt kiểm tra CA. Không tự thêm refresh flow. Dùng ID như opaque string; OpenAPI format UUID chưa được xác nhận bằng schema DB. Numeric PostgreSQL serialization chưa kiểm tra runtime; model nên parse số an toàn.
-
-## 17. OpenAPI đối chiếu và phạm vi
-
-- 44 method/path trong OpenAPI khớp route đã kiểm tra; không thấy operation chỉ có trong OpenAPI hoặc chỉ có trong source.
-- Khác biệt xác nhận: register required fields/min password/response envelope như mục 4.
-- Hotel review GET optional bearer khớp implementation.
-- OpenAPI nullable/UUID/numeric có phần không xác nhận được vì repo không có schema/migration SQL.
-- `npm test` chạy 7 test auth với DB stub. Các nhóm khác và production chưa runtime test.
-- Base URL được cung cấp, chưa kiểm tra kết nối.
-
-## 18. Nguồn đã kiểm tra
-
-- [openapi.yaml](openapi.yaml), [src/app.js](src/app.js), [src/middleware/auth.js](src/middleware/auth.js), [src/config/db.js](src/config/db.js)
-- Routes: [auth.js](src/routes/auth.js), [users.js](src/routes/users.js), [hotels.js](src/routes/hotels.js), [roomTypes.js](src/routes/roomTypes.js), [rooms.js](src/routes/rooms.js), [bookings.js](src/routes/bookings.js), [guests.js](src/routes/guests.js), [payments.js](src/routes/payments.js), [vouchers.js](src/routes/vouchers.js), [favorites.js](src/routes/favorites.js), [reviews.js](src/routes/reviews.js)
-- [test/auth.test.js](test/auth.test.js), [package.json](package.json)
+- [OpenAPI description](openapi.yaml)
+- [Flutter integration guide](FLUTTER_AI_INTEGRATION_GUIDE.md)
+- [Implementation prompt](IMPLEMENT_FLUTTER_API_PROMPT.md)
+- Routes: `src/routes/*.js`; mounting/auth: `src/app.js`, `src/middleware/auth.js`; DB connection: `src/config/db.js`; notification migration: `migrations/001_create_notifications.sql`.

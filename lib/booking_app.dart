@@ -11,6 +11,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:lottie/lottie.dart' hide Marker;
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -182,6 +183,60 @@ class _MockQrPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+class _PaymentQrSheet extends StatelessWidget {
+  const _PaymentQrSheet({required this.qrContent});
+
+  final String qrContent;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Thanh toán bằng VietQR',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 16),
+              if (qrContent.isEmpty)
+                const Text('Không nhận được nội dung mã QR.')
+              else
+                QrImageView(
+                  data: qrContent,
+                  size: 220,
+                  backgroundColor: Colors.white,
+                  errorCorrectionLevel: QrErrorCorrectLevel.M,
+                ),
+              const SizedBox(height: 14),
+              const Text(
+                'Đây là mã QR thanh toán mô phỏng cho Demo.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Tôi đã hoàn tất chuyển khoản'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
 class _PaymentLoadingDialog extends StatelessWidget {
   const _PaymentLoadingDialog();
 
@@ -214,22 +269,21 @@ class BookingSuccessScreen extends StatelessWidget {
                 const Icon(Icons.check_circle_rounded,
                     color: Color(0xFF2E9B63), size: 84),
                 const SizedBox(height: 18),
-                const Text('Ghi nhận thanh toán thành công!',
+                const Text('Thanh toán thành công!',
                     textAlign: TextAlign.center,
                     style:
                         TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
-                const Text('Đang chờ khách sạn xác nhận',
+                const Text('Đơn đặt phòng đã được xác nhận',
                     style: TextStyle(color: Colors.black54)),
                 const SizedBox(height: 22),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                          builder: (_) => const BookingPage()),
+                    onPressed: () => Navigator.of(context).popUntil(
+                      (route) => route.isFirst,
                     ),
-                    child: const Text('Xem đơn đặt phòng'),
+                    child: const Text('Tiếp tục khám phá'),
                   ),
                 ),
               ],

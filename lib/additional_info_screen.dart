@@ -148,31 +148,31 @@ class _AdditionalInfoScreenState extends State<AdditionalInfoScreen> {
                 ),
               ),
               const SizedBox(height: 5),
-              Row(
-                children: [
-                  Expanded(
-                    child: RadioListTile<String>(
-                      key: const ValueKey('additional_gender_male'),
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: onboardingBlue,
-                      title: const Text('Nam'),
-                      value: 'Nam',
-                      groupValue: _gender,
-                      onChanged: (value) => setState(() => _gender = value),
+              RadioGroup<String>(
+                groupValue: _gender,
+                onChanged: (value) => setState(() => _gender = value),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<String>(
+                        key: const ValueKey('additional_gender_male'),
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: onboardingBlue,
+                        title: const Text('Nam'),
+                        value: 'Nam',
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: RadioListTile<String>(
-                      key: const ValueKey('additional_gender_female'),
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: onboardingBlue,
-                      title: const Text('Nữ'),
-                      value: 'Nữ',
-                      groupValue: _gender,
-                      onChanged: (value) => setState(() => _gender = value),
+                    Expanded(
+                      child: RadioListTile<String>(
+                        key: const ValueKey('additional_gender_female'),
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: onboardingBlue,
+                        title: const Text('Nữ'),
+                        value: 'Nữ',
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
