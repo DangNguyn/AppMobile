@@ -2562,7 +2562,10 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
                     validator: (value) {
                       final number =
                           (value ?? '').replaceAll(RegExp(r'\D'), '');
-                      if (number.length != 16) return 'Nhập đủ 16 chữ số';
+                      if (number.length != 16 ||
+                          !_passesLuhn(number)) {
+                        return 'Số thẻ phải đủ 16 chữ số';
+                      }
                       return null;
                     },
                   ),

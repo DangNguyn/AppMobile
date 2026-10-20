@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'auth_screen.dart';
 import 'onboarding_widgets.dart';
+import 'ui_motion.dart';
 import 'user_service.dart';
 
 class NotificationScreen extends StatelessWidget {
@@ -17,8 +18,25 @@ class NotificationScreen extends StatelessWidget {
     await userService.saveNotificationPref(enabled);
     if (!context.mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AuthScreen(homeBuilder: homeBuilder),
+      PageRouteBuilder<void>(
+        pageBuilder: (_, animation, secondaryAnimation) =>
+            AuthScreen(homeBuilder: homeBuilder),
+        transitionDuration: AppMotion.pageDuration,
+        reverseTransitionDuration: AppMotion.pageDuration,
+        transitionsBuilder: (_, animation, secondaryAnimation, child) {
+          final curvedAnimation = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1, 0),
+              end: Offset.zero,
+            ).animate(curvedAnimation),
+            child: child,
+          );
+        },
       ),
     );
   }

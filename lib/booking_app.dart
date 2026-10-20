@@ -98,7 +98,6 @@ class _MockVietQrSheetState extends State<_MockVietQrSheet> {
       } else {
         setState(() => _seconds--);
       }
-
     });
   }
 
@@ -238,7 +237,6 @@ class _PaymentQrSheet extends StatelessWidget {
         ),
       );
 }
-
 class _PaymentLoadingDialog extends StatelessWidget {
   const _PaymentLoadingDialog();
 

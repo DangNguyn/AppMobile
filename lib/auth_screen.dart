@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'onboarding_widgets.dart';
+import 'splash_screen.dart';
 import 'user_service.dart';
 import 'ui_motion.dart';
 
@@ -85,9 +85,10 @@ class _AuthScreenState extends State<AuthScreen> {
     );
     await userService.saveOnboardingCompleted(true);
     if (!mounted) return;
-    _showMessage('Đăng nhập thành công.');
     Navigator.of(context).pushAndRemoveUntil<void>(
-      MaterialPageRoute<void>(builder: widget.homeBuilder),
+      MaterialPageRoute<void>(
+        builder: (_) => SplashScreen(homeBuilder: widget.homeBuilder),
+      ),
       (route) => false,
     );
   }
@@ -125,9 +126,10 @@ class _AuthScreenState extends State<AuthScreen> {
     await userService.saveOnboardingCompleted(true);
 
     if (!mounted) return;
-    _showMessage('Đăng ký thành công. Chào mừng bạn đến với FomoGo.');
     Navigator.of(context).pushAndRemoveUntil<void>(
-      MaterialPageRoute<void>(builder: widget.homeBuilder),
+      MaterialPageRoute<void>(
+        builder: (_) => SplashScreen(homeBuilder: widget.homeBuilder),
+      ),
       (route) => false,
     );
   }
