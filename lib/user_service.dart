@@ -7,11 +7,13 @@ class UserInfo {
     this.name = '',
     this.birthDate = '',
     this.gender = '',
+    this.city = '',
   });
 
   final String name;
   final String birthDate;
   final String gender;
+  final String city;
 }
 
 @immutable
@@ -46,6 +48,7 @@ class UserService {
   static const _nameKey = 'user_name';
   static const _birthDateKey = 'user_birth_date';
   static const _genderKey = 'user_gender';
+  static const _cityKey = 'user_city';
   static const _privateProfileKey = 'privacy_private_profile';
   static const _privateReviewsKey = 'privacy_private_reviews';
   static const onboardingCompletedKey = 'onboarding_completed';
@@ -151,11 +154,13 @@ class UserService {
     required String name,
     required String birthDate,
     required String gender,
+    String city = '',
   }) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_nameKey, name.trim());
     await preferences.setString(_birthDateKey, birthDate);
     await preferences.setString(_genderKey, gender);
+    await preferences.setString(_cityKey, city);
   }
 
   Future<UserInfo> getUserInfo() async {
@@ -164,6 +169,7 @@ class UserService {
       name: preferences.getString(_nameKey) ?? '',
       birthDate: preferences.getString(_birthDateKey) ?? '',
       gender: preferences.getString(_genderKey) ?? '',
+      city: preferences.getString(_cityKey) ?? '',
     );
   }
 
@@ -208,6 +214,7 @@ class UserService {
       _nameKey,
       _birthDateKey,
       _genderKey,
+      _cityKey,
       _privateProfileKey,
       _privateReviewsKey,
       onboardingCompletedKey,

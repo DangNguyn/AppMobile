@@ -23,6 +23,7 @@ import 'advanced_hotel_filter.dart';
 import 'voucher_storage_service.dart';
 import 'ui_motion.dart';
 import 'account_page.dart';
+import 'ai_support_page.dart';
 
 part 'support.dart';
 part 'booking.dart';
@@ -237,6 +238,7 @@ class _PaymentQrSheet extends StatelessWidget {
         ),
       );
 }
+
 class _PaymentLoadingDialog extends StatelessWidget {
   const _PaymentLoadingDialog();
 
@@ -253,44 +255,139 @@ class _PaymentLoadingDialog extends StatelessWidget {
 }
 
 class BookingSuccessScreen extends StatelessWidget {
-  const BookingSuccessScreen({super.key, required this.booking});
+  const BookingSuccessScreen({
+    super.key,
+    required this.booking,
+    required this.payment,
+  });
 
   final Booking booking;
+  final Payment payment;
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Thanh toán')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.check_circle_rounded,
-                    color: Color(0xFF2E9B63), size: 84),
-                const SizedBox(height: 18),
-                const Text('Thanh toán thành công!',
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                const Text('Đơn đặt phòng đã được xác nhận',
-                    style: TextStyle(color: Colors.black54)),
-                const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(context).popUntil(
-                      (route) => route.isFirst,
-                    ),
-                    child: const Text('Tiếp tục khám phá'),
-                  ),
-                ),
-              ],
+        appBar: AppBar(title: const Text('Thanh toán thành công')),
+        body: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            const SizedBox(height: 24),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Color(0xFF2E9B63),
+              size: 84,
             ),
-          ),
+            const SizedBox(height: 18),
+            const Text(
+              'Thanh toán thành công!',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Đơn đặt phòng đã được xác nhận',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54),
+            ),
+            const SizedBox(height: 24),
+            Card(
+              elevation: 0,
+              color: const Color(0xFFF3F7FB),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    _successDetail(
+                      'Mã đặt phòng',
+                      booking.bookingCode ?? booking.id,
+                    ),
+                    _successDetail(
+                      'Mã giao dịch',
+                      payment.transactionId ?? payment.id,
+                    ),
+                    _successDetail(
+                      'Số tiền',
+                      _formatBookingMoney(payment.amount),
+                    ),
+                    _successDetail(
+                      'Phương thức',
+                      _paymentMethodLabel(payment.paymentMethod),
+                    ),
+                    _successDetail(
+                      'Email xác nhận',
+                      _emailStatusLabel(payment.emailStatus),
+                      isLast: true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).popUntil(
+                  (route) => route.isFirst,
+                ),
+                child: const Text('Tiếp tục khám phá'),
+              ),
+            ),
+          ],
         ),
       );
+
+  Widget _successDetail(
+    String label,
+    String value, {
+    bool isLast = false,
+  }) =>
+      Padding(
+        padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(color: Colors.black54),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+String _paymentMethodLabel(String method) {
+  switch (method.toLowerCase()) {
+    case 'card':
+      return 'Thẻ thanh toán';
+    case 'qr':
+      return 'VietQR';
+    default:
+      return method.isEmpty ? 'Không xác định' : method;
+  }
+}
+
+String _emailStatusLabel(String? status) {
+  switch (status?.toLowerCase()) {
+    case 'sent':
+      return 'Đã gửi';
+    case 'failed':
+      return 'Thanh toán thành công, gửi email thất bại';
+    case 'not_sent':
+      return 'Chưa gửi';
+    case 'not_applicable':
+      return 'Không áp dụng';
+    default:
+      return 'Backend chưa trả trạng thái';
+  }
 }
 
 class FixedEdgeScrollBehavior extends ScrollBehavior {

@@ -56,7 +56,7 @@ abstract final class AppTypography {
 }
 
 abstract final class AppMotion {
-  static const pageDuration = Duration(milliseconds: 220);
+  static const pageDuration = Duration(milliseconds: 300);
   static const sheetAnimationStyle = AnimationStyle(
     duration: Duration(milliseconds: 320),
     reverseDuration: Duration(milliseconds: 240),
@@ -93,12 +93,28 @@ class AppPageTransitionsBuilder extends PageTransitionsBuilder {
 
     final curved = CurvedAnimation(
       parent: animation,
-      curve: Curves.easeInOutCubic,
-      reverseCurve: Curves.easeInOutCubic,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     );
-    // Keep page geometry fixed while content fades. This avoids banner edges
-    // appearing to jump when consecutive onboarding pages use different heights.
-    return FadeTransition(opacity: curved, child: child);
+    final position = Tween<Offset>(
+      begin: const Offset(0.035, 0),
+      end: Offset.zero,
+    ).animate(curved);
+    final outgoing = CurvedAnimation(
+      parent: secondaryAnimation,
+      curve: Curves.easeInOutCubic,
+    );
+
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: Offset.zero,
+        end: const Offset(-0.012, 0),
+      ).animate(outgoing),
+      child: FadeTransition(
+        opacity: curved,
+        child: SlideTransition(position: position, child: child),
+      ),
+    );
   }
 }
 

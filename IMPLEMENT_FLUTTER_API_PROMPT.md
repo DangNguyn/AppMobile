@@ -1,4 +1,4 @@
-# Prompt: Integrate the existing Hotel Booking API into this Flutter project
+﻿# Prompt: Integrate the existing Hotel Booking API into this Flutter project
 
 Copy the prompt below into an AI coding assistant while the Flutter repository is open.
 
@@ -6,70 +6,65 @@ Copy the prompt below into an AI coding assistant while the Flutter repository i
 
 ## Role and scope
 
-You are a senior Flutter engineer integrating an existing hotel-booking backend. Work inside the Flutter project that is currently open. Do not modify backend source, database schema, or the API documentation as part of Flutter integration unless the user separately authorizes backend work.
+You are a senior Flutter engineer integrating the existing hotel-booking backend. Work only in the Flutter project. Do not modify backend source, database schema, SMTP/Render configuration, or backend documentation unless separately authorized. Do not deploy or call production mutation endpoints as tests.
 
-Production API base URL supplied by the backend project: `https://hotel-booking-backend-fz9h.onrender.com`. Treat the URL as configuration, not proof the production service is reachable. Do not call production mutation endpoints as tests.
+Production base URL supplied by the project: `https://hotel-booking-backend-fz9h.onrender.com`. Treat this as configuration, not proof of availability.
 
 ## Required discovery before editing
 
-1. Read `pubspec.yaml`, inspect `lib/`, app routing, current state management, theme, models, repositories/services, and existing tests.
-2. Find and read the backend references `FLUTTER_AI_INTEGRATION_GUIDE.md` and `HOTEL_BOOKING_API_DOCUMENT.md` if available. If they are absent, inspect the backend source/OpenAPI when that repository is available; do not infer an endpoint from a screen design.
-3. Check whether the Flutter project already has an API client or auth/token storage and extend it instead of creating a parallel architecture.
-4. Summarize the project structure and the concrete integration plan before broad edits. Keep the current design and navigation unless asked to redesign them.
+1. Read `pubspec.yaml`, inspect `lib/`, navigation, state management, theme, models, repositories/services, and tests.
+2. Read `FLUTTER_AI_INTEGRATION_GUIDE.md` and `HOTEL_BOOKING_API_DOCUMENT.md`. If unavailable, inspect `src/app.js`, mounted routes, middleware and services; never infer an endpoint from a screen.
+3. Reuse the existing API client/auth/token storage and summarize the plan before broad changes.
 
-## Backend API contract to follow
+## Backend contract
 
-Use only the routes and fields documented in the API reference and verified in backend source. Base URL path prefix is `/api` except root health.
+Use only APIs currently present in source:
 
-- Public data: hotels and their images/amenities/vibes/room types/reviews, room types and their images/rooms, rooms and availability, vouchers.
-- Authentication: register requires `full_name,email,phone,password`; login takes `email,password` and intends to return JWT plus public user data. The backend JWT lasts 7 days. `POST /api/auth/logout` does not revoke it; client must delete secure local token. **Known backend blockers:** registration omits `users.id`, but inspected schema has no UUID default or trigger; login updates `users.last_login_at`, which is absent from the schema. Confirm both are fixed in server/schema before relying on registration/login in a real integration.
-- Profile: `GET /api/users/me`, `PUT /api/users/me` with only `full_name`, `phone`, `avatar`.
-- Availability: `GET /api/rooms/available?hotel_id=...&check_in=YYYY-MM-DD&check_out=YYYY-MM-DD&room_type_id=...`; checkout must follow check-in. The result is physical rooms. Booking creation rechecks overlap. Pending bookings, including those with failed payment, remain room blockers because only cancelled bookings are excluded and no expiry exists.
-- Booking create: `POST /api/bookings` requires `hotel_id,room_ids,check_in,check_out,adults`; optional `children` (default 0), `voucher_code`. `room_ids` are physical room IDs. Server calculates price. Database stores aggregate `number_of_guests`; it does not persist an adult/child split. Current route writes tax as zero.
-- Booking history/detail: `GET /api/bookings` and `GET /api/bookings/{id}` are scoped to the JWT user. History includes hotel name, room list, booking totals/status, latest payment status/method. Hotel images, guest names and cancellation policy are not in that response. Use guest/payment subroutes when needed.
-- Booking actions: `PATCH /api/bookings/{id}/cancel`; `POST /api/bookings/{id}/check-in` only on a confirmed booking on its check-in date. `GET /api/bookings/{id}/qr` returns a booking `qr_token`; do not treat it as payment confirmation.
-- Payments are mock-only: `POST /api/payments` body `{booking_id,payment_method}` where method is `card` or `qr`; amount is read by the backend. For QR, `GET /api/payments/{id}/qr` provides plain text to encode. Scanning does not mark paid. `POST /api/payments/{id}/simulate` body `{result:"success"|"failed"}` is gated by server `PAYMENT_MODE=mock`.
-- **Known payment/notification blocker:** no notifications table appeared in inspected DB schema. The route uses `notifications.message`, but the checked-in migration creates `content`. The payment success route inserts a notification inside the same transaction, so its success branch fails/rolls back until backend/database are aligned. Do not claim payment success or build UI that assumes a successful response until this is resolved and verified. Payment failure sets the payment `failed` and normally leaves the booking `pending`.
-- Reviews can be written only for the user’s booking at the same hotel when its status is `completed` or `checked_in`; rating is 1–5.
-- Notification listing has a route but is not operationally verified due to the blocker above. FCM push is not implemented.
+- Health: `GET /`, `GET /api/test-db` public.
+- Auth: public `POST /api/auth/register` (`full_name,email,phone,password`) and `POST /api/auth/login` (`email,password`); JWT `POST /api/auth/logout`, `GET /api/auth/me`. JWT has `id`, expires in 7 days. Logout does not revoke it; delete local token.
+- Profile: JWT `GET /api/users/me`, `PUT /api/users/me` accepts only `full_name`, `phone`, `avatar`.
+- Catalog: public hotels (`GET /api/hotels`, `/{id}`, `/{id}/images`, `/{id}/amenities`, `/{id}/vibes`, `/{id}/room-types`), room types (`GET /api/room-types/{id}`, `/{id}/images`, `/{id}/rooms`), rooms (`GET /api/rooms`, `/{id}`, `/available`), vouchers (`GET /api/vouchers`, `/{code}`, `POST /validate`). Hotel reviews list is optional JWT; supplied invalid JWT still returns 401.
+- Booking: JWT `POST /api/bookings` requires `hotel_id,room_ids,check_in,check_out,adults,booking_email`; optional `children` defaults to 0 and `voucher_code`. `room_ids` are physical room IDs. Email is per booking, checked for format/domain DNS but DNS does not verify mailbox existence. Backend calculates totals; tax is currently zero. History/detail and cancel/check-in/booking QR routes are `/api/bookings`, `/{id}`, `/{id}/cancel` (PATCH), `/{id}/check-in` (POST), `/{id}/qr`; nested guest routes are `/{id}/guests` (GET/POST) and payments `/{id}/payments` (GET). Guest edit/delete: `/api/guests/{id}` (PUT/DELETE). All these require JWT and enforce ownership where source checks it.
+- Payment: JWT `POST /api/payments` takes `booking_id,payment_method` (`card` or `qr`); amount comes from DB. `GET /api/payments/{id}` and `/{id}/qr`; QR data is demo text, not proof of transfer. `POST /api/payments/{id}/simulate` takes `{"result":"success"|"failed"}` and requires server `PAYMENT_MODE=mock`.
+- On mock success, backend updates payment to `paid`, confirms the booking and writes a notification in the same transaction. After commit it calls Gmail SMTP service using the booking's `booking_email`. Response includes `email.status` (`sent`, `failed`, `not_sent`); SMTP failure does not roll back paid status. A completed payment cannot be simulated/sent again. This is not a real payment-provider integration.
+- Notifications: JWT `GET /api/notifications`.
+- Favorites: JWT `GET /api/favorites`, `POST /api/favorites/{hotel_id}`, and `DELETE /api/favorites/{hotel_id}`.
+- Reviews: JWT `POST /api/reviews` (`hotel_id,booking_id,rating,comment?`), `PUT/DELETE /api/reviews/{id}`; also hotel-scoped `POST /api/hotels/{id}/reviews`. Review requires the user's same-hotel booking in `completed` or `checked_in` state; rating 1–5. Reviews are hotel ratings, not free-form experience posts.
+- There are no posts, user search, public-other-user profile, image upload, refresh-token, hotel search/pagination, or FCM endpoints in mounted source.
 
-Statuses from inspected DB constraints: booking `pending,confirmed,cancelled,completed,checked_in,no_show`; payment `pending,paid,failed,refunded`. Never invent a status or mark success locally before backend confirmation.
+## Known integration caveats
+
+- Previously inspected local schema lacked `users.id` default while register source omits an ID; login writes `last_login_at`, absent from that local metadata. Do not assume those auth writes work until verified in the target environment.
+- Booking source writes `bookings.booking_email`; migration `migrations/002_add_booking_email.sql` adds it. Previously inspected local metadata did not have the column.
+- Payment success inserts `notifications.content`; migration `001_create_notifications.sql` defines `content`. Previously inspected local DB had no notifications table, so success transaction would fail until schema is ready. `GET /api/notifications` selects `message`, which differs from migration's `content`.
+- Schema observations were from configured local DB, not production. Production URL, SMTP credentials/configuration, and end-to-end payment/email have not been verified. The Flutter app must never receive SMTP credentials.
 
 ## Implementation requirements
 
-- Reuse the project’s existing architecture. Add/adjust API client, DTO/model, repository/service, and UI state only as needed.
-- Keep base URL environment-configurable for development/staging/production. Do not hardcode passwords, API keys or JWTs.
-- Attach Bearer token only to protected APIs; handle invalid optional bearer correctly (the hotel review list is public but a supplied token must be valid).
-- Store JWT securely. Do not log credentials, token, identification info or payment-card data.
-- Parse JSON defensively: nullable values, IDs as strings, PostgreSQL numeric fields as number-or-numeric-string, and dates as `YYYY-MM-DD`.
-- Implement loading, empty, success and recoverable error states. Handle `400`, `401`, `403`, `404`, `409`, `500` without claiming an operation succeeded when it did not.
-- Do not add fake hotel/room/booking/payment data as production fallback. If an endpoint is blocked or unavailable, display a truthful error/state and report the backend dependency.
-- Do not implement card collection for this backend mock flow. Never send PAN, CVV/CVC or OTP.
-- Do not invent hotel search, pagination, refresh-token, FCM, availability hold/expiry, cancellation policy, or fields absent from the API.
-- Add or update focused tests using the project’s existing conventions. Do not make unrelated app-wide rewrites.
+- Follow existing Flutter architecture and keep visual design/navigation unless asked otherwise.
+- Keep base URL environment-configurable. Store JWT securely; never log passwords, tokens, identity details or card data.
+- Attach Bearer JWT only to protected APIs. Parse nullable values, string-or-number PostgreSQL numerics, opaque string IDs and `YYYY-MM-DD` dates safely.
+- Handle loading, empty, success and recoverable error states. Respect server `400/401/403/404/409/500` and booking DNS `503`; never claim success before a successful response.
+- Do not invent backend fields or endpoints, fake production data, card entry, payment scanning confirmation, booking expiry, cancellation policy, refresh-token or push behavior.
+- Do not modify booking/review behavior or introduce experience posts/image uploads as part of this integration.
+- Add focused tests following existing Flutter conventions; do not rewrite unrelated app areas.
 
-## Suggested user flows
+## Suggested flow
 
-1. Explore: load hotels, then load hotel images/amenities/vibes/room types as needed.
-2. Choose dates and guests: query physical availability; show the returned room/type/capacity/base price. Treat this as a snapshot.
-3. Book: send selected physical room IDs and dates; use the returned booking as canonical. If response is 409, refresh availability and explain conflict.
-4. Pay demo: initiate card/QR method without sensitive card fields. For QR, render the returned plain text locally. Poll/get payment only if the app already has a deliberate refresh flow; do not treat QR scan as payment. Simulate only if the backend explicitly reports mock mode available and the environment is a demo. Respect the notification schema blocker; do not show a false successful state.
-5. My bookings: load `/api/bookings`, show exactly fields provided, and load booking detail/guests/payments where needed. Do not derive hotel image or guest names from unrelated data.
-6. Check-in: display the backend booking QR/token only if appropriate; call check-in and trust its response, including 409 if date/status is ineligible.
+1. Explore hotel/catalog data and query physical room availability for dates.
+2. Create booking with the selected room IDs and a separately entered `booking_email`; use the server response as canonical.
+3. Create a demo payment without card data. For QR, encode/display returned demo text only. Simulate only in a demo environment when mock mode is intentionally enabled.
+4. Treat payment as paid only when the server response says `data.status="paid"`. Show email status from `email.status`; do not claim an email was delivered when status is `failed` or `not_sent`.
+5. Load booking history/detail and nested guests/payments as needed. For check-in, trust backend eligibility and response.
 
-## Completion checklist
+## Completion report
 
-- List every Flutter file changed and what it does.
-- List each integrated endpoint with HTTP method, auth behavior and screen/service using it.
-- List unresolved backend blockers: register’s missing generated `users.id`, login’s `last_login_at` schema mismatch, payment notification table/column mismatch, and any others discovered in source.
-- State which flows were tested locally, the exact commands and outcomes. Run `flutter pub get`, `flutter analyze`, and relevant tests only when Flutter tooling/dependencies are available; report skipped checks honestly.
-- Do not claim production connectivity or successful real payment unless directly verified in an authorized non-mutating way.
+List changed Flutter files, integrated methods/routes and auth behavior, checks/tests run, and unresolved dependencies. Do not claim production connectivity, real payment, or email delivery unless directly verified in an authorized non-mutating way.
 
 ---
 
-## Backend documentation sources
+## Backend references
 
 - `FLUTTER_AI_INTEGRATION_GUIDE.md`
 - `HOTEL_BOOKING_API_DOCUMENT.md`
-- Backend OpenAPI: `openapi.yaml`
-
+- `openapi.yaml` (verify against mounted source; it may not cover later changes)

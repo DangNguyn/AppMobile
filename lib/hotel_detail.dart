@@ -216,7 +216,8 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
       try {
         final favorites = await apiRepository.favorites();
         if (mounted) {
-          setState(() => _isSaved = favorites.any((item) => item.id == hotelId));
+          setState(
+              () => _isSaved = favorites.any((item) => item.id == hotelId));
         }
       } on ApiException {
         // Favorite state is unavailable until the user is authenticated.
@@ -1357,7 +1358,10 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             tooltip: 'Thư',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const CustomerSupportPage(),
+                builder: (_) => CustomerSupportPage(
+                  hotelId: widget.hotelId,
+                  hotelName: widget.hotelName,
+                ),
               ),
             ),
             icon: const Icon(Icons.mail_outline_rounded),

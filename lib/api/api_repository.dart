@@ -53,13 +53,12 @@ class ApiRepository {
     required String phone,
     String? email,
   }) async =>
-      ApiUser.fromJson(_data(await client.put('/api/users/me',
-          auth: true,
-          body: {
-            'full_name': fullName,
-            'phone': phone,
-            if (email != null) 'email': email,
-          })));
+      ApiUser.fromJson(
+          _data(await client.put('/api/users/me', auth: true, body: {
+        'full_name': fullName,
+        'phone': phone,
+        if (email != null) 'email': email,
+      })));
   Future<void> logout() async {
     try {
       await client.post('/api/auth/logout', auth: true);
@@ -125,6 +124,7 @@ class ApiRepository {
           required String checkOut,
           required int adults,
           int children = 0,
+          required String bookingEmail,
           String? voucherCode}) async =>
       Booking.fromJson(
           _data(await client.post('/api/bookings', auth: true, body: {
@@ -134,6 +134,7 @@ class ApiRepository {
         'check_out': checkOut,
         'adults': adults,
         'children': children,
+        'booking_email': bookingEmail,
         if (voucherCode != null) 'voucher_code': voucherCode,
       })));
   Future<List<Booking>> bookings() async =>
@@ -193,30 +194,33 @@ class ApiRepository {
           .map(Payment.fromJson)
           .toList();
   Future<Payment> createPayment(
-          {required String bookingId,
-          required String method}) async =>
-      Payment.fromJson(_data(await client.post('/api/payments',
-          auth: true,
-          body: {
-            'booking_id': bookingId,
-            'payment_method': method,
-          })));
+          {required String bookingId, required String method}) async =>
+      Payment.fromJson(
+          _data(await client.post('/api/payments', auth: true, body: {
+        'booking_id': bookingId,
+        'payment_method': method,
+      })));
   Future<Map<String, dynamic>> paymentQr(String paymentId) async =>
       _data(await client.get('/api/payments/$paymentId/qr', auth: true));
   Future<Payment> simulatePayment({
     required String paymentId,
     required String result,
-  }) async =>
-      Payment.fromJson(_data(await client.post(
-        '/api/payments/$paymentId/simulate',
-        auth: true,
-        body: {'result': result},
-      )));
+  }) async {
+    final response = await client.post(
+      '/api/payments/$paymentId/simulate',
+      auth: true,
+      body: {'result': result},
+    );
+    final data = _data(response);
+    if (response is Map && response['email'] is Map) {
+      final email = (response['email'] as Map).cast<String, dynamic>();
+      data['email_status'] = email['status'];
+    }
+    return Payment.fromJson(data);
+  }
 
   Future<List<Voucher>> vouchers() async =>
-      _items(await client.get('/api/vouchers'))
-          .map(Voucher.fromJson)
-          .toList();
+      _items(await client.get('/api/vouchers')).map(Voucher.fromJson).toList();
 
   Future<Voucher> voucher(String code) async => Voucher.fromJson(
         _data(await client.get('/api/vouchers/${Uri.encodeComponent(code)}')),

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 import 'account_page.dart';
+import 'ai_support_page.dart';
 import 'booking_app.dart' as hotel_booking;
 import 'destination_images.dart';
 import 'explore_page.dart';
@@ -17,7 +18,6 @@ import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
 import 'voucher_storage_service.dart';
-import 'ui_motion.dart';
 
 enum VietnameseInputMode { telex, vni }
 
@@ -344,7 +344,6 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2F80ED)),
         fontFamily: 'Roboto',
-        pageTransitionsTheme: appPageTransitionsTheme,
       ),
       home: SplashScreen(homeBuilder: (_) => const TravelHomePage()),
     );
@@ -459,6 +458,7 @@ class _TravelHomePageState extends State<TravelHomePage> {
       ),
     );
   }
+
   @override
   void dispose() {
     _scrollController
@@ -565,8 +565,7 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                                     CrossAxisAlignment.start,
                                                 children: [
                                                   const SectionHeader(
-                                                    title:
-                                                        'Ưu đãi từ voucher',
+                                                    title: 'Ưu đãi từ voucher',
                                                   ),
                                                   const SizedBox(height: 12),
                                                   const _HomeVoucherSection(),
@@ -778,7 +777,7 @@ class _CustomerSupportIconButtonState extends State<CustomerSupportIconButton> {
 
   void _openSupportPage() {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const CustomerSupportPage()),
+      MaterialPageRoute<void>(builder: (_) => const AiSupportPage()),
     );
   }
 
@@ -1122,7 +1121,7 @@ class _CustomerSupportPageState extends State<CustomerSupportPage> {
                         onTap: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) => AiConversationPage(
+                              builder: (_) => _AiConversationPage(
                                 conversation: conversation,
                               ),
                             ),
@@ -1183,7 +1182,7 @@ class _CustomerSupportPageState extends State<CustomerSupportPage> {
     Navigator.of(context)
         .push(
           MaterialPageRoute<void>(
-            builder: (_) => const AiConversationPage(),
+            builder: (_) => const _AiConversationPage(),
           ),
         )
         .then((_) => _loadConversations());
@@ -1217,19 +1216,16 @@ class _CustomerSupportPageState extends State<CustomerSupportPage> {
   }
 }
 
-class AiConversationPage extends StatefulWidget {
-  const AiConversationPage({
-    super.key,
-    this.conversation,
-  });
+class _AiConversationPage extends StatefulWidget {
+  const _AiConversationPage({this.conversation});
 
   final _SavedConversation? conversation;
 
   @override
-  State<AiConversationPage> createState() => _AiConversationPageState();
+  State<_AiConversationPage> createState() => _AiConversationPageState();
 }
 
-class _AiConversationPageState extends State<AiConversationPage> {
+class _AiConversationPageState extends State<_AiConversationPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _messagesController = ScrollController();
   late final String _conversationId;
@@ -1579,7 +1575,8 @@ class _AiConversationPageState extends State<AiConversationPage> {
               final confirmed = await _confirmConversationDeletion(context);
               if (!confirmed) return;
               await _ConversationStore.delete(_conversationId);
-              if (mounted) Navigator.of(context).pop();
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
             },
             icon: const Icon(Icons.delete_outline_rounded),
           ),
@@ -2123,9 +2120,8 @@ class _BookingPageState extends State<BookingPage> {
                       ],
                     );
                   }
-                  final visibleBookings = _showAllBookings
-                      ? bookings
-                      : bookings.take(1).toList();
+                  final visibleBookings =
+                      _showAllBookings ? bookings : bookings.take(1).toList();
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -3293,7 +3289,8 @@ class _SavedHotelCard extends StatelessWidget {
                     if (image == null || image.isEmpty) {
                       return const ColoredBox(
                         color: Color(0xFFE5F1FF),
-                        child: Icon(Icons.hotel_rounded, color: Color(0xFF0875F5), size: 36),
+                        child: Icon(Icons.hotel_rounded,
+                            color: Color(0xFF0875F5), size: 36),
                       );
                     }
                     return Image.network(
@@ -3301,7 +3298,8 @@ class _SavedHotelCard extends StatelessWidget {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const ColoredBox(
                         color: Color(0xFFE5F1FF),
-                        child: Icon(Icons.hotel_rounded, color: Color(0xFF0875F5), size: 36),
+                        child: Icon(Icons.hotel_rounded,
+                            color: Color(0xFF0875F5), size: 36),
                       ),
                     );
                   },
@@ -3313,19 +3311,44 @@ class _SavedHotelCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(hotel.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF172536))),
+                      Text(hotel.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF172536))),
                       const SizedBox(height: 5),
-                      Text([hotel.city, hotel.address].where((text) => text.trim().isNotEmpty).join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, height: 1.3, color: Color(0xFF778391))),
+                      Text(
+                          [hotel.city, hotel.address]
+                              .where((text) => text.trim().isNotEmpty)
+                              .join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.3,
+                              color: Color(0xFF778391))),
                       const SizedBox(height: 7),
                       Row(children: [
                         if (hotel.starRating != null) ...[
-                          const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 17),
+                          const Icon(Icons.star_rounded,
+                              color: Color(0xFFFFB800), size: 17),
                           const SizedBox(width: 3),
-                          Text(hotel.starRating!.toStringAsFixed(1), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF445266))),
+                          Text(hotel.starRating!.toStringAsFixed(1),
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF445266))),
                           const SizedBox(width: 8),
                         ],
-                        const Text('Xem chi tiết', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0875F5))),
-                        const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF0875F5)),
+                        const Text('Xem chi tiết',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0875F5))),
+                        const Icon(Icons.chevron_right_rounded,
+                            size: 18, color: Color(0xFF0875F5)),
                       ]),
                     ],
                   ),
@@ -3334,7 +3357,8 @@ class _SavedHotelCard extends StatelessWidget {
               IconButton(
                 tooltip: 'Bỏ lưu khách sạn',
                 onPressed: onRemove,
-                icon: const Icon(Icons.bookmark_remove_outlined, color: Color(0xFF778391)),
+                icon: const Icon(Icons.bookmark_remove_outlined,
+                    color: Color(0xFF778391)),
               ),
             ],
           ),
@@ -4438,9 +4462,8 @@ class _HomeVoucherSectionState extends State<_HomeVoucherSection> {
     final vouchers = (results[0] as List<Voucher>)
         .where((voucher) => _isActiveToday(voucher, today))
         .toList();
-    final savedCodes = (results[1] as List<String>)
-        .map((code) => code.toUpperCase())
-        .toSet();
+    final savedCodes =
+        (results[1] as List<String>).map((code) => code.toUpperCase()).toSet();
     return _HomeVoucherData(vouchers: vouchers, savedCodes: savedCodes);
   }
 
@@ -4512,9 +4535,7 @@ class _HomeVoucherSectionState extends State<_HomeVoucherSection> {
                 radius: 19,
                 backgroundColor: const Color(0xFFE5F1FF),
                 child: Icon(
-                  isPercent
-                      ? Icons.percent_rounded
-                      : Icons.local_offer_rounded,
+                  isPercent ? Icons.percent_rounded : Icons.local_offer_rounded,
                   color: const Color(0xFF176FC1),
                   size: 20,
                 ),
@@ -4567,9 +4588,8 @@ class _HomeVoucherSectionState extends State<_HomeVoucherSection> {
                 ),
               ),
               FilledButton(
-                onPressed: isSaved
-                    ? null
-                    : () => _saveVoucher(voucher, savedCodes),
+                onPressed:
+                    isSaved ? null : () => _saveVoucher(voucher, savedCodes),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(88, 36),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -5273,7 +5293,8 @@ class _DiscoverBannerState extends State<DiscoverBanner> {
     _vouchers = _loadActiveVouchers();
   }
 
-  DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+  DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
 
   Future<List<Voucher>> _loadActiveVouchers() async {
     final today = DateTime.now();
@@ -5282,7 +5303,9 @@ class _DiscoverBannerState extends State<DiscoverBanner> {
       if (voucher.status.toLowerCase() != 'active') return false;
       final start = voucher.startDate;
       final end = voucher.endDate;
-      if (start != null && _dateOnly(today).isBefore(_dateOnly(start))) return false;
+      if (start != null && _dateOnly(today).isBefore(_dateOnly(start))) {
+        return false;
+      }
       if (end != null && _dateOnly(today).isAfter(_dateOnly(end))) return false;
       return voucher.code.trim().isNotEmpty;
     }).toList();
@@ -5316,36 +5339,69 @@ class _DiscoverBannerState extends State<DiscoverBanner> {
               SizedBox(
                 height: 146,
                 child: Stack(fit: StackFit.expand, children: [
-                  Image.asset(_voucherImages[index % _voucherImages.length], fit: BoxFit.cover),
-                  const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+                  Image.asset(_voucherImages[index % _voucherImages.length],
+                      fit: BoxFit.cover),
+                  const DecoratedBox(
+                      decoration: BoxDecoration(
+                          gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [Colors.transparent, Color(0xCC071D33)],
                   ))),
                   Positioned(
-                    top: 12, left: 12,
+                    top: 12,
+                    left: 12,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                      child: Text(voucher.code, style: const TextStyle(color: Color(0xFF0875F5), fontWeight: FontWeight.w800, fontSize: 12)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Text(voucher.code,
+                          style: const TextStyle(
+                              color: Color(0xFF0875F5),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12)),
                     ),
                   ),
                   Positioned(
-                    left: 14, right: 14, bottom: 12,
-                    child: Text('Giảm $discount', style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900)),
+                    left: 14,
+                    right: 14,
+                    bottom: 12,
+                    child: Text('Giảm $discount',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 23,
+                            fontWeight: FontWeight.w900)),
                   ),
                 ]),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
                 child: Row(children: [
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(isPercent ? 'Ưu đãi giảm theo phần trăm' : 'Ưu đãi giảm số tiền', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF172536))),
-                    const SizedBox(height: 4),
-                    Text('Đơn tối thiểu ${_formatMainVnd(voucher.minOrder)}', style: const TextStyle(fontSize: 12, color: Color(0xFF778391))),
-                  ])),
+                  Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text(
+                            isPercent
+                                ? 'Ưu đãi giảm theo phần trăm'
+                                : 'Ưu đãi giảm số tiền',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF172536))),
+                        const SizedBox(height: 4),
+                        Text(
+                            'Đơn tối thiểu ${_formatMainVnd(voucher.minOrder)}',
+                            style: const TextStyle(
+                                fontSize: 12, color: Color(0xFF778391))),
+                      ])),
                   const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Color(0xFF0875F5)),
+                  const Icon(Icons.arrow_forward_ios_rounded,
+                      size: 16, color: Color(0xFF0875F5)),
                 ]),
               ),
             ],
@@ -5373,14 +5429,18 @@ class _DiscoverBannerState extends State<DiscoverBanner> {
           future: _vouchers,
           builder: (context, snapshot) {
             if (snapshot.hasError) {
-              return const Text('Chưa tải được ưu đãi. Vui lòng thử lại sau.', style: TextStyle(color: Color(0xFF778391), fontSize: 13));
+              return const Text('Chưa tải được ưu đãi. Vui lòng thử lại sau.',
+                  style: TextStyle(color: Color(0xFF778391), fontSize: 13));
             }
             if (!snapshot.hasData) {
-              return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
+              return const SizedBox(
+                  height: 150,
+                  child: Center(child: CircularProgressIndicator()));
             }
             final vouchers = snapshot.data!;
             if (vouchers.isEmpty) {
-              return const Text('Hiện chưa có voucher khả dụng.', style: TextStyle(color: Color(0xFF778391), fontSize: 13));
+              return const Text('Hiện chưa có voucher khả dụng.',
+                  style: TextStyle(color: Color(0xFF778391), fontSize: 13));
             }
             return SizedBox(
               height: 235,
@@ -5416,72 +5476,120 @@ class _VoucherPromotionDetailPage extends StatelessWidget {
     final isPercent = voucher.discountType.toLowerCase() == 'percent';
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text('Chi tiết ưu đãi'), backgroundColor: const Color(0xFF0E1F38), foregroundColor: Colors.white),
+      appBar: AppBar(
+          title: const Text('Chi tiết ưu đãi'),
+          backgroundColor: const Color(0xFF0E1F38),
+          foregroundColor: Colors.white),
       body: ListView(padding: EdgeInsets.zero, children: [
         Image.asset(imageAsset, height: 230, fit: BoxFit.cover),
         Padding(
           padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Ưu đãi giảm $_discount', style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: Color(0xFF172536))),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Ưu đãi giảm $_discount',
+                style: const TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF172536))),
             const SizedBox(height: 10),
-            Text(isPercent ? 'Giảm ${voucher.discountValue.round()}% trên đơn hàng đủ điều kiện.' : 'Giảm ${_formatMainVnd(voucher.discountValue)} trên đơn hàng đủ điều kiện.', style: const TextStyle(fontSize: 16, height: 1.5, color: Color(0xFF4F5D6D))),
+            Text(
+                isPercent
+                    ? 'Giảm ${voucher.discountValue.round()}% trên đơn hàng đủ điều kiện.'
+                    : 'Giảm ${_formatMainVnd(voucher.discountValue)} trên đơn hàng đủ điều kiện.',
+                style: const TextStyle(
+                    fontSize: 16, height: 1.5, color: Color(0xFF4F5D6D))),
             const SizedBox(height: 8),
-            Text('Giá trị đơn tối thiểu: ${_formatMainVnd(voucher.minOrder)}', style: const TextStyle(fontSize: 15, color: Color(0xFF4F5D6D))),
+            Text('Giá trị đơn tối thiểu: ${_formatMainVnd(voucher.minOrder)}',
+                style: const TextStyle(fontSize: 15, color: Color(0xFF4F5D6D))),
             if (voucher.startDate != null || voucher.endDate != null) ...[
               const SizedBox(height: 8),
-              Text('Thời hạn: ${voucher.startDate == null ? 'đang áp dụng' : _formatMainDate(voucher.startDate)} – ${_formatMainDate(voucher.endDate)}', style: const TextStyle(fontSize: 15, color: Color(0xFF4F5D6D))),
+              Text(
+                  'Thời hạn: ${voucher.startDate == null ? 'đang áp dụng' : _formatMainDate(voucher.startDate)} – ${_formatMainDate(voucher.endDate)}',
+                  style:
+                      const TextStyle(fontSize: 15, color: Color(0xFF4F5D6D))),
             ],
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: const Color(0xFFF2F7FC), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFDDE8F3))),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFF2F7FC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFDDE8F3))),
               child: Row(children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('MÃ ƯU ĐÃI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF778391))),
-                  const SizedBox(height: 6),
-                  SelectableText(voucher.code, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF0875F5))),
-                ])),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      const Text('MÃ ƯU ĐÃI',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF778391))),
+                      const SizedBox(height: 6),
+                      SelectableText(voucher.code,
+                          style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0875F5))),
+                    ])),
                 TextButton.icon(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: voucher.code));
                     if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã sao chép mã ưu đãi')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Đã sao chép mã ưu đãi')));
                   },
-                  icon: const Icon(Icons.copy_rounded), label: const Text('Sao chép'),
+                  icon: const Icon(Icons.copy_rounded),
+                  label: const Text('Sao chép'),
                 ),
               ]),
             ),
             const SizedBox(height: 14),
-            const Text('Nhập mã này trong ô voucher ở bước đặt phòng. Điều kiện áp dụng được hệ thống kiểm tra theo đơn hàng.', style: TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF778391))),
+            const Text(
+                'Nhập mã này trong ô voucher ở bước đặt phòng. Điều kiện áp dụng được hệ thống kiểm tra theo đơn hàng.',
+                style: TextStyle(
+                    fontSize: 14, height: 1.5, color: Color(0xFF778391))),
             const SizedBox(height: 26),
             const Divider(height: 1, color: Color(0xFFE8EDF3)),
             const SizedBox(height: 24),
-            const Text('Lên kế hoạch chuyến đi thuận tiện hơn', style: TextStyle(fontSize: 20, height: 1.25, fontWeight: FontWeight.w900, color: Color(0xFF172536))),
+            const Text('Lên kế hoạch chuyến đi thuận tiện hơn',
+                style: TextStyle(
+                    fontSize: 20,
+                    height: 1.25,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF172536))),
             const SizedBox(height: 8),
-            const Text('Một vài gợi ý hữu ích khi tìm và đặt phòng trực tuyến. Các nội dung dưới đây chỉ mang tính tham khảo, không phải điều kiện của mã ưu đãi.', style: TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF778391))),
+            const Text(
+                'Một vài gợi ý hữu ích khi tìm và đặt phòng trực tuyến. Các nội dung dưới đây chỉ mang tính tham khảo, không phải điều kiện của mã ưu đãi.',
+                style: TextStyle(
+                    fontSize: 14, height: 1.5, color: Color(0xFF778391))),
             const SizedBox(height: 16),
             const _TravelBookingTip(
               icon: Icons.event_available_rounded,
               title: 'Chọn ngày phù hợp',
-              description: 'Xác định ngày nhận và trả phòng trước khi tìm kiếm để dễ so sánh tổng chi phí cho toàn bộ kỳ nghỉ.',
+              description:
+                  'Xác định ngày nhận và trả phòng trước khi tìm kiếm để dễ so sánh tổng chi phí cho toàn bộ kỳ nghỉ.',
             ),
             const SizedBox(height: 10),
             const _TravelBookingTip(
               icon: Icons.location_on_outlined,
               title: 'Ưu tiên vị trí thuận tiện',
-              description: 'Kiểm tra khu vực lưu trú so với điểm tham quan, phương tiện di chuyển và những nơi bạn dự định ghé thăm.',
+              description:
+                  'Kiểm tra khu vực lưu trú so với điểm tham quan, phương tiện di chuyển và những nơi bạn dự định ghé thăm.',
             ),
             const SizedBox(height: 10),
             const _TravelBookingTip(
               icon: Icons.fact_check_outlined,
               title: 'Đọc kỹ thông tin phòng',
-              description: 'Xem loại phòng, số khách, tiện nghi và chính sách nhận phòng trước khi xác nhận đặt chỗ.',
+              description:
+                  'Xem loại phòng, số khách, tiện nghi và chính sách nhận phòng trước khi xác nhận đặt chỗ.',
             ),
             const SizedBox(height: 10),
             const _TravelBookingTip(
               icon: Icons.payments_outlined,
               title: 'So sánh tổng giá',
-              description: 'Đối chiếu giá cho toàn bộ thời gian lưu trú và kiểm tra lại thông tin khách trước khi thanh toán.',
+              description:
+                  'Đối chiếu giá cho toàn bộ thời gian lưu trú và kiểm tra lại thông tin khách trước khi thanh toán.',
             ),
             const SizedBox(height: 20),
             Container(
@@ -5494,12 +5602,14 @@ class _VoucherPromotionDetailPage extends StatelessWidget {
               child: const Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.lightbulb_outline_rounded, color: Color(0xFFE59A00)),
+                  Icon(Icons.lightbulb_outline_rounded,
+                      color: Color(0xFFE59A00)),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Mẹo nhỏ: sau khi sao chép mã, hãy nhập mã ở bước đặt phòng và kiểm tra phần giảm giá được áp dụng trước khi thanh toán.',
-                      style: TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF66542E)),
+                      style: TextStyle(
+                          fontSize: 14, height: 1.5, color: Color(0xFF66542E)),
                     ),
                   ),
                 ],
@@ -5550,9 +5660,15 @@ class _TravelBookingTip extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF172536))),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF172536))),
                 const SizedBox(height: 4),
-                Text(description, style: const TextStyle(fontSize: 13, height: 1.45, color: Color(0xFF667384))),
+                Text(description,
+                    style: const TextStyle(
+                        fontSize: 13, height: 1.45, color: Color(0xFF667384))),
               ],
             ),
           ),

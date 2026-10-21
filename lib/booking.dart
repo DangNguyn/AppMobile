@@ -399,10 +399,14 @@ class BookingDetailPage extends StatelessWidget {
         return;
       }
       if (!navigator.mounted) return;
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Thanh toán đã được xác nhận.')),
+      await navigator.pushReplacement<void, void>(
+        MaterialPageRoute<void>(
+          builder: (_) => BookingSuccessScreen(
+            booking: booking,
+            payment: result,
+          ),
+        ),
       );
-      navigator.pop(true);
     } on ApiException catch (error) {
       if (navigator.mounted) {
         messenger.showSnackBar(

@@ -6,9 +6,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api/api_client.dart';
 import 'api/api_repository.dart';
+import 'ai_support_page.dart';
 import 'user_service.dart';
 import 'ui_motion.dart';
-import 'personal_profile_page.dart';
 
 const _accountNavy = Color(0xFF0E1F38);
 const _accountBlue = _accountNavy;
@@ -104,7 +104,7 @@ class _AccountScreenState extends State<AccountScreen> {
           bio: '',
           dateOfBirth: info.birthDate,
           gender: info.gender,
-          city: '',
+          city: info.city,
           email: savedData.email,
           mobile: savedData.mobile,
         );
@@ -113,6 +113,7 @@ class _AccountScreenState extends State<AccountScreen> {
           fullName: info.name,
           dateOfBirth: info.birthDate,
           gender: info.gender,
+          city: info.city,
           email: savedData.email,
           mobile: savedData.mobile,
         );
@@ -168,6 +169,7 @@ class _AccountScreenState extends State<AccountScreen> {
           name: confirmedProfile.fullName,
           birthDate: confirmedProfile.dateOfBirth,
           gender: confirmedProfile.gender,
+          city: confirmedProfile.city,
         );
         await userService.saveContactInfo(
           email: confirmedProfile.email,
@@ -316,13 +318,12 @@ class _AccountScreenState extends State<AccountScreen> {
               children: [
                 _ProfileCard(
                   profile: _profile,
-                  onOpenProfile: () => Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(
-                      builder: (_) => PersonalProfilePage(
-                        fullName: _profile.fullName,
-                        username: _profile.username,
-                      ),
-                    ),
+                  onOpenProfile: () => _openDetail(
+                    context,
+                    title: 'Hồ sơ của tôi',
+                    description:
+                        'Xem và cập nhật thông tin cá nhân dùng cho các chuyến đi của bạn.',
+                    icon: Icons.person_outline_rounded,
                   ),
                   onEditProfile: _editProfile,
                 ),
@@ -374,24 +375,20 @@ class _AccountScreenState extends State<AccountScreen> {
                       icon: Icons.help_outline_rounded,
                       title: 'Trung tâm hỗ trợ',
                       subtitle: 'Tìm câu trả lời cho những thắc mắc của bạn',
-                      onTap: () => _openDetail(
-                        context,
-                        title: 'Trung tâm hỗ trợ',
-                        description:
-                            'Xem các câu hỏi thường gặp hoặc liên hệ đội ngũ hỗ trợ để được trợ giúp về chuyến đi.',
-                        icon: Icons.help_outline_rounded,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AiSupportPage(),
+                        ),
                       ),
                     ),
                     _AccountOption(
                       icon: Icons.mail_outline_rounded,
                       title: 'Liên hệ chúng tôi',
                       subtitle: 'Gửi góp ý hoặc liên hệ với đội ngũ FomoGo',
-                      onTap: () => _openDetail(
-                        context,
-                        title: 'Liên hệ chúng tôi',
-                        description:
-                            'Chúng tôi luôn sẵn sàng lắng nghe góp ý để cải thiện trải nghiệm du lịch của bạn.',
-                        icon: Icons.mail_outline_rounded,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AiSupportPage(),
+                        ),
                       ),
                     ),
                   ],
@@ -838,9 +835,9 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
                 _PrivacySettingTile(
                   key: const ValueKey('private_profile_switch'),
                   switchKey: const ValueKey('private_profile_toggle'),
-                  title: 'Đặt hồ sơ thành Riêng tư',
+                  title: 'Đặt tab Bộ sưu tập thành Riêng tư',
                   description:
-                      'Khi bật, người khác sẽ không thể xem trang hồ sơ cá nhân và bài viết của bạn.',
+                      'Nếu bạn đặt cài đặt này thành riêng tư, các bộ sưu tập đã xuất bản của bạn sẽ không có sẵn cho những người khác xem trên hồ sơ của bạn.',
                   value: _privateProfile,
                   onChanged: _setPrivateProfile,
                 ),
@@ -2438,15 +2435,15 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
 
   bool _passesLuhn(String number) {
     var sum = 0;
-    var shouldDouble = false;
+    var doubleDigit = false;
     for (var index = number.length - 1; index >= 0; index--) {
       var digit = int.parse(number[index]);
-      if (shouldDouble) {
+      if (doubleDigit) {
         digit *= 2;
         if (digit > 9) digit -= 9;
       }
       sum += digit;
-      shouldDouble = !shouldDouble;
+      doubleDigit = !doubleDigit;
     }
     return sum % 10 == 0;
   }
