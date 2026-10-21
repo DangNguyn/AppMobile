@@ -1,5 +1,9 @@
 part of 'booking_app.dart';
 
+// The legacy inbox UI remains available for reference while all entry points
+// now open the shared AI support conversation.
+// ignore_for_file: unused_field, unused_element
+
 class DiscountIconButton extends StatefulWidget {
   const DiscountIconButton({super.key});
 
@@ -752,18 +756,30 @@ class _CustomerSupportIconButtonState extends State<CustomerSupportIconButton> {
 }
 
 class CustomerSupportPage extends StatefulWidget {
-  const CustomerSupportPage({super.key});
+  const CustomerSupportPage({
+    super.key,
+    this.hotelId,
+    this.hotelName,
+  });
+
+  final String? hotelId;
+  final String? hotelName;
 
   @override
   State<CustomerSupportPage> createState() => _CustomerSupportPageState();
 }
 
 class _CustomerSupportPageState extends State<CustomerSupportPage> {
-  int _selectedTab = 0;
+  final int _selectedTab = 0;
   int _selectedFilter = 0;
 
   @override
   Widget build(BuildContext context) {
+    return AiSupportPage(
+      hotelId: widget.hotelId,
+      hotelName: widget.hotelName,
+    );
+    /*
     const tabs = ['Trò chuyện', 'Thông báo'];
     const filters = ['Tất cả', 'Đang tiến hành', 'Đã đóng'];
 
@@ -853,6 +869,7 @@ class _CustomerSupportPageState extends State<CustomerSupportPage> {
         ),
       ),
     );
+    */
   }
 
   Widget _buildChats(List<String> filters) {

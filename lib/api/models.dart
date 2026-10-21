@@ -325,6 +325,7 @@ class Payment {
     required this.paymentMethod,
     this.transactionId,
     this.paidAt,
+    this.emailStatus,
   });
 
   final String id;
@@ -334,6 +335,7 @@ class Payment {
   final String paymentMethod;
   final String? transactionId;
   final DateTime? paidAt;
+  final String? emailStatus;
 
   factory Payment.fromJson(Map<String, dynamic> json) => Payment(
         id: '${json['id'] ?? ''}',
@@ -343,6 +345,7 @@ class Payment {
         paymentMethod: '${json['payment_method'] ?? ''}',
         transactionId: json['transaction_id'] as String?,
         paidAt: _date(json['paid_at']),
+        emailStatus: json['email_status'] as String?,
       );
 }
 

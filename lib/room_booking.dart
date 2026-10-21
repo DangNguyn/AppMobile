@@ -69,6 +69,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
         checkOut: _dateOnly(widget.selection.dateRange.end),
         adults: widget.selection.adultCount,
         children: widget.selection.childCount,
+        bookingEmail: _emailController.text.trim(),
         voucherCode: _selectedVoucher?.code,
       );
       await apiRepository.addBookingGuest(
@@ -152,8 +153,9 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
     Navigator.of(context).pop();
+    late final Payment payment;
     try {
-      final payment = await apiRepository.simulatePayment(
+      payment = await apiRepository.simulatePayment(
         paymentId: _pendingPayment!.id,
         result: 'success',
       );
@@ -189,7 +191,10 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     if (!mounted) return;
     Navigator.of(context).pushReplacement<void, void>(
       MaterialPageRoute<void>(
-        builder: (_) => BookingSuccessScreen(booking: _pendingBooking!),
+        builder: (_) => BookingSuccessScreen(
+          booking: _pendingBooking!,
+          payment: payment,
+        ),
       ),
     );
   }
