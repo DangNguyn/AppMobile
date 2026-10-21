@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'ui_motion.dart';
 import 'user_service.dart';
 import 'welcome_screen.dart';
 

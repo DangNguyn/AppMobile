@@ -26,16 +26,10 @@ class NotificationScreen extends StatelessWidget {
         transitionsBuilder: (_, animation, secondaryAnimation, child) {
           final curvedAnimation = CurvedAnimation(
             parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
+            curve: Curves.easeInOutCubic,
+            reverseCurve: Curves.easeInOutCubic,
           );
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(1, 0),
-              end: Offset.zero,
-            ).animate(curvedAnimation),
-            child: child,
-          );
+          return FadeTransition(opacity: curvedAnimation, child: child);
         },
       ),
     );

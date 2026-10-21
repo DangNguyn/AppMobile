@@ -17,6 +17,7 @@ import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
 import 'voucher_storage_service.dart';
+import 'ui_motion.dart';
 
 enum VietnameseInputMode { telex, vni }
 
@@ -343,6 +344,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2F80ED)),
         fontFamily: 'Roboto',
+        pageTransitionsTheme: appPageTransitionsTheme,
       ),
       home: SplashScreen(homeBuilder: (_) => const TravelHomePage()),
     );
@@ -457,7 +459,6 @@ class _TravelHomePageState extends State<TravelHomePage> {
       ),
     );
   }
-
   @override
   void dispose() {
     _scrollController

@@ -39,6 +39,7 @@ dependencies:
   latlong2: ^0.10.1
   shared_preferences: ^2.5.6
   flutter_secure_storage: ^9.2.4
+  image_picker: ^1.1.2
   flutter_animate: ^4.5.2
   shimmer: ^4.0.0
   lottie: ^3.6.1

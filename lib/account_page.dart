@@ -8,6 +8,7 @@ import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'user_service.dart';
 import 'ui_motion.dart';
+import 'personal_profile_page.dart';
 
 const _accountNavy = Color(0xFF0E1F38);
 const _accountBlue = _accountNavy;
@@ -196,7 +197,9 @@ class _AccountScreenState extends State<AccountScreen> {
         messenger
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(content: Text('Không thể lưu hồ sơ lên máy chủ. Thông tin chưa được thay đổi.')),
+            const SnackBar(
+                content: Text(
+                    'Không thể lưu hồ sơ lên máy chủ. Thông tin chưa được thay đổi.')),
           );
       }
     }
@@ -313,12 +316,13 @@ class _AccountScreenState extends State<AccountScreen> {
               children: [
                 _ProfileCard(
                   profile: _profile,
-                  onOpenProfile: () => _openDetail(
-                    context,
-                    title: 'Hồ sơ của tôi',
-                    description:
-                        'Xem và cập nhật thông tin cá nhân dùng cho các chuyến đi của bạn.',
-                    icon: Icons.person_outline_rounded,
+                  onOpenProfile: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PersonalProfilePage(
+                        fullName: _profile.fullName,
+                        username: _profile.username,
+                      ),
+                    ),
                   ),
                   onEditProfile: _editProfile,
                 ),
@@ -834,9 +838,9 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
                 _PrivacySettingTile(
                   key: const ValueKey('private_profile_switch'),
                   switchKey: const ValueKey('private_profile_toggle'),
-                  title: 'Đặt tab Bộ sưu tập thành Riêng tư',
+                  title: 'Đặt hồ sơ thành Riêng tư',
                   description:
-                      'Nếu bạn đặt cài đặt này thành riêng tư, các bộ sưu tập đã xuất bản của bạn sẽ không có sẵn cho những người khác xem trên hồ sơ của bạn.',
+                      'Khi bật, người khác sẽ không thể xem trang hồ sơ cá nhân và bài viết của bạn.',
                   value: _privateProfile,
                   onChanged: _setPrivateProfile,
                 ),
@@ -1979,8 +1983,8 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     final cards = await SavedPaymentCardStore.loadCards();
     if (mounted) {
       setState(() => _cards
-      ..clear()
-      ..addAll(cards));
+        ..clear()
+        ..addAll(cards));
     }
   }
 
@@ -1999,7 +2003,9 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
 
   Future<void> _removeCard(SavedPaymentCard card) async {
     await SavedPaymentCardStore.removeCard(card.id);
-    if (mounted) setState(() => _cards.removeWhere((item) => item.id == card.id));
+    if (mounted) {
+      setState(() => _cards.removeWhere((item) => item.id == card.id));
+    }
   }
 
   void _showCardInfo() {
@@ -2430,6 +2436,21 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
     return 'Thẻ ngân hàng';
   }
 
+  bool _passesLuhn(String number) {
+    var sum = 0;
+    var shouldDouble = false;
+    for (var index = number.length - 1; index >= 0; index--) {
+      var digit = int.parse(number[index]);
+      if (shouldDouble) {
+        digit *= 2;
+        if (digit > 9) digit -= 9;
+      }
+      sum += digit;
+      shouldDouble = !shouldDouble;
+    }
+    return sum % 10 == 0;
+  }
+
   String? _validateExpiry(String? value) {
     final match = RegExp(r'^(\d{2})/(\d{2})$').firstMatch(value ?? '');
     if (match == null) return 'Nhập ngày hết hạn dạng MM/YY';
@@ -2562,8 +2583,7 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
                     validator: (value) {
                       final number =
                           (value ?? '').replaceAll(RegExp(r'\D'), '');
-                      if (number.length != 16 ||
-                          !_passesLuhn(number)) {
+                      if (number.length != 16 || !_passesLuhn(number)) {
                         return 'Số thẻ phải đủ 16 chữ số';
                       }
                       return null;
@@ -2698,7 +2718,8 @@ class _CardNumberInputFormatter extends TextInputFormatter {
     TextEditingValue newValue,
   ) {
     final allDigits = newValue.text.replaceAll(RegExp(r'\D'), '');
-    final digits = allDigits.length > 16 ? allDigits.substring(0, 16) : allDigits;
+    final digits =
+        allDigits.length > 16 ? allDigits.substring(0, 16) : allDigits;
     final formatted = <String>[];
     for (var start = 0; start < digits.length; start += 4) {
       final end = start + 4 < digits.length ? start + 4 : digits.length;
@@ -2711,10 +2732,8 @@ class _CardNumberInputFormatter extends TextInputFormatter {
         : requestedOffset > newValue.text.length
             ? newValue.text.length
             : requestedOffset;
-    final rawDigitsBeforeCursor = newValue.text
-        .substring(0, offset)
-        .replaceAll(RegExp(r'\D'), '')
-        .length;
+    final rawDigitsBeforeCursor =
+        newValue.text.substring(0, offset).replaceAll(RegExp(r'\D'), '').length;
     final digitsBeforeCursor = rawDigitsBeforeCursor > digits.length
         ? digits.length
         : rawDigitsBeforeCursor;
