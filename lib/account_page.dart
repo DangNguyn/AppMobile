@@ -9,6 +9,7 @@ import 'api/api_repository.dart';
 import 'ai_support_page.dart';
 import 'user_service.dart';
 import 'ui_motion.dart';
+import 'personal_profile_page.dart';
 
 const _accountNavy = Color(0xFF0E1F38);
 const _accountBlue = _accountNavy;
@@ -119,23 +120,6 @@ class _AccountScreenState extends State<AccountScreen> {
         );
       }
     });
-  }
-
-  void _openDetail(
-    BuildContext context, {
-    required String title,
-    required String description,
-    required IconData icon,
-  }) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AccountDetailPage(
-          title: title,
-          description: description,
-          icon: icon,
-        ),
-      ),
-    );
   }
 
   Future<void> _editProfile() async {
@@ -318,12 +302,13 @@ class _AccountScreenState extends State<AccountScreen> {
               children: [
                 _ProfileCard(
                   profile: _profile,
-                  onOpenProfile: () => _openDetail(
-                    context,
-                    title: 'Hồ sơ của tôi',
-                    description:
-                        'Xem và cập nhật thông tin cá nhân dùng cho các chuyến đi của bạn.',
-                    icon: Icons.person_outline_rounded,
+                  onOpenProfile: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PersonalProfilePage(
+                        fullName: _profile.fullName,
+                        username: _profile.username,
+                      ),
+                    ),
                   ),
                   onEditProfile: _editProfile,
                 ),
