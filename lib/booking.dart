@@ -390,7 +390,7 @@ class BookingDetailPage extends StatelessWidget {
         paymentId: payment.id,
         result: 'success',
       );
-      if (result.status.toLowerCase() != 'paid') {
+      if (!_isPaymentSuccessful(result.status)) {
         messenger.showSnackBar(
           const SnackBar(
             content: Text('Thanh toán chưa được xác nhận. Đơn vẫn đang chờ.'),

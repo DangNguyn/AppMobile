@@ -151,7 +151,7 @@ class _MockVietQrSheetState extends State<_MockVietQrSheet> {
                     _timer?.cancel();
                     Navigator.of(context).pop(true);
                   },
-                  child: const Text('Tôi đã hoàn tất chuyển khoản'),
+                  child: const Text('Tôi đã thanh toán'),
                 ),
               ),
             ],
@@ -230,7 +230,7 @@ class _PaymentQrSheet extends StatelessWidget {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Tôi đã hoàn tất chuyển khoản'),
+                  child: const Text('Tôi đã thanh toán'),
                 ),
               ),
             ],
@@ -243,13 +243,20 @@ class _PaymentLoadingDialog extends StatelessWidget {
   const _PaymentLoadingDialog();
 
   @override
-  Widget build(BuildContext context) => const AlertDialog(
-        content: Row(
-          children: [
-            SizedBox(width: 24, height: 24, child: CircularProgressIndicator()),
-            SizedBox(width: 16),
-            Expanded(child: Text('Đang kết nối cổng thanh toán...')),
-          ],
+  Widget build(BuildContext context) => const PopScope<void>(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(),
+              ),
+              SizedBox(width: 16),
+              Expanded(child: Text('Đang xác nhận thanh toán...')),
+            ],
+          ),
         ),
       );
 }
@@ -362,6 +369,19 @@ class BookingSuccessScreen extends StatelessWidget {
           ],
         ),
       );
+}
+
+bool _isPaymentSuccessful(String status) {
+  switch (status.trim().toLowerCase()) {
+    case 'paid':
+    case 'success':
+    case 'successful':
+    case 'completed':
+    case 'confirmed':
+      return true;
+    default:
+      return false;
+  }
 }
 
 String _paymentMethodLabel(String method) {

@@ -2418,21 +2418,6 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
     return 'Thẻ ngân hàng';
   }
 
-  bool _passesLuhn(String number) {
-    var sum = 0;
-    var doubleDigit = false;
-    for (var index = number.length - 1; index >= 0; index--) {
-      var digit = int.parse(number[index]);
-      if (doubleDigit) {
-        digit *= 2;
-        if (digit > 9) digit -= 9;
-      }
-      sum += digit;
-      doubleDigit = !doubleDigit;
-    }
-    return sum % 10 == 0;
-  }
-
   String? _validateExpiry(String? value) {
     final match = RegExp(r'^(\d{2})/(\d{2})$').firstMatch(value ?? '');
     if (match == null) return 'Nhập ngày hết hạn dạng MM/YY';
@@ -2565,7 +2550,7 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
                     validator: (value) {
                       final number =
                           (value ?? '').replaceAll(RegExp(r'\D'), '');
-                      if (number.length != 16 || !_passesLuhn(number)) {
+                      if (number.length != 16) {
                         return 'Số thẻ phải đủ 16 chữ số';
                       }
                       return null;
