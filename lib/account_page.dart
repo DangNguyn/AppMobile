@@ -9,6 +9,7 @@ import 'api/api_repository.dart';
 import 'ai_support_page.dart';
 import 'user_service.dart';
 import 'ui_motion.dart';
+import 'personal_profile_page.dart';
 
 const _accountNavy = Color(0xFF0E1F38);
 const _accountBlue = _accountNavy;
@@ -119,23 +120,6 @@ class _AccountScreenState extends State<AccountScreen> {
         );
       }
     });
-  }
-
-  void _openDetail(
-    BuildContext context, {
-    required String title,
-    required String description,
-    required IconData icon,
-  }) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AccountDetailPage(
-          title: title,
-          description: description,
-          icon: icon,
-        ),
-      ),
-    );
   }
 
   Future<void> _editProfile() async {
@@ -318,12 +302,13 @@ class _AccountScreenState extends State<AccountScreen> {
               children: [
                 _ProfileCard(
                   profile: _profile,
-                  onOpenProfile: () => _openDetail(
-                    context,
-                    title: 'Hồ sơ của tôi',
-                    description:
-                        'Xem và cập nhật thông tin cá nhân dùng cho các chuyến đi của bạn.',
-                    icon: Icons.person_outline_rounded,
+                  onOpenProfile: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PersonalProfilePage(
+                        fullName: _profile.fullName,
+                        username: _profile.username,
+                      ),
+                    ),
                   ),
                   onEditProfile: _editProfile,
                 ),
@@ -2433,21 +2418,6 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
     return 'Thẻ ngân hàng';
   }
 
-  bool _passesLuhn(String number) {
-    var sum = 0;
-    var doubleDigit = false;
-    for (var index = number.length - 1; index >= 0; index--) {
-      var digit = int.parse(number[index]);
-      if (doubleDigit) {
-        digit *= 2;
-        if (digit > 9) digit -= 9;
-      }
-      sum += digit;
-      doubleDigit = !doubleDigit;
-    }
-    return sum % 10 == 0;
-  }
-
   String? _validateExpiry(String? value) {
     final match = RegExp(r'^(\d{2})/(\d{2})$').firstMatch(value ?? '');
     if (match == null) return 'Nhập ngày hết hạn dạng MM/YY';
@@ -2580,7 +2550,7 @@ class _AddPaymentCardPageState extends State<AddPaymentCardPage> {
                     validator: (value) {
                       final number =
                           (value ?? '').replaceAll(RegExp(r'\D'), '');
-                      if (number.length != 16 || !_passesLuhn(number)) {
+                      if (number.length != 16) {
                         return 'Số thẻ phải đủ 16 chữ số';
                       }
                       return null;
