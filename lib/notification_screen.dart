@@ -5,6 +5,7 @@ import 'auth_screen.dart';
 import 'onboarding_widgets.dart';
 import 'ui_motion.dart';
 import 'user_service.dart';
+import 'notification_service.dart';
 
 class NotificationScreen extends StatelessWidget {
   const NotificationScreen({super.key, required this.homeBuilder});
@@ -16,6 +17,9 @@ class NotificationScreen extends StatelessWidget {
     bool enabled,
   ) async {
     await userService.saveNotificationPref(enabled);
+    if (enabled) {
+      await AppNotificationService.instance.requestPermission();
+    }
     if (!context.mounted) return;
     Navigator.of(context).push(
       PageRouteBuilder<void>(

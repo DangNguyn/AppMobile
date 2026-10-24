@@ -237,7 +237,13 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     try {
       final payments = await apiRepository.payments(bookingId);
       for (final payment in payments.reversed) {
-        if (_isPaymentSuccessful(payment.status)) return payment;
+        if (_isPaymentSuccessful(payment.status)) {
+          try {
+            return await apiRepository.payment(payment.id);
+          } on ApiException {
+            return payment;
+          }
+        }
       }
     } on ApiException {
       // Keep the original payment error visible when the status lookup fails.
@@ -247,6 +253,12 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
 
   Future<void> _showSuccessScreen(Payment payment) async {
     if (!mounted || _pendingBooking == null) return;
+    final emailFeedback = _paymentEmailFeedback(payment, _pendingBooking!);
+    if (emailFeedback != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(emailFeedback)));
+    }
     await Navigator.of(context).pushReplacement<void, void>(
       MaterialPageRoute<void>(
         builder: (_) => BookingSuccessScreen(
@@ -264,7 +276,28 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   void initState() {
     super.initState();
     _loadAvailableRooms();
+    _loadCurrentUser();
     _savedPaymentCardLoad = _loadSavedPaymentCard();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    try {
+      final user = await apiRepository.me();
+      if (!mounted) return;
+      setState(() {
+        if (_nameController.text.trim().isEmpty) {
+          _nameController.text = user.fullName;
+        }
+        if (_phoneController.text.trim().isEmpty) {
+          _phoneController.text = user.phone;
+        }
+        if (_emailController.text.trim().isEmpty) {
+          _emailController.text = user.email;
+        }
+      });
+    } on ApiException {
+      // The guest can still enter contact details manually if not signed in.
+    }
   }
 
   Future<void> _loadSavedPaymentCard() async {
@@ -392,6 +425,15 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
             ),
           ],
         ),
+        actions: [
+          if (MediaQuery.viewInsetsOf(context).bottom > 0)
+            TextButton.icon(
+              onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
+              icon: const Icon(Icons.keyboard_hide_rounded),
+              label: const Text('Xong'),
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+            ),
+        ],
       ),
       body: _step == 0
           ? Form(
@@ -499,6 +541,9 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                           hint: 'name@example.com',
                           icon: Icons.email_outlined,
                           keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) =>
+                              FocusScope.of(context).unfocus(),
                           validator: (value) {
                             final email = value?.trim() ?? '';
                             if (!RegExp(
@@ -520,6 +565,8 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                       controller: _requestController,
                       minLines: 3,
                       maxLines: 5,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => FocusScope.of(context).unfocus(),
                       decoration: _bookingInputDecoration(
                         hint: 'Ví dụ: phòng tầng cao, giường phụ...',
                       ),
@@ -930,12 +977,15 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     required IconData icon,
     required String? Function(String?) validator,
     TextInputType? keyboardType,
+    TextInputAction textInputAction = TextInputAction.next,
+    ValueChanged<String>? onFieldSubmitted,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       validator: validator,
-      textInputAction: TextInputAction.next,
+      textInputAction: textInputAction,
+      onFieldSubmitted: onFieldSubmitted,
       decoration: _bookingInputDecoration(
         label: label,
         hint: hint,
