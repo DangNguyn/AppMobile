@@ -11,7 +11,6 @@ import 'booking_app.dart' as hotel_booking;
 import 'destination_images.dart';
 import 'explore_page.dart';
 import 'onboarding_widgets.dart';
-import 'splash_screen.dart';
 import 'user_service.dart';
 import 'welcome_screen.dart';
 import 'api/api_client.dart';
@@ -345,7 +344,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2F80ED)),
         fontFamily: 'Roboto',
       ),
-      home: SplashScreen(homeBuilder: (_) => const TravelHomePage()),
+      home: const AppEntry(),
     );
   }
 }
