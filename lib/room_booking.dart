@@ -31,6 +31,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   String? _selectedPaymentMethod;
   SavedPaymentCard? _selectedPaymentCard;
   bool _isSubmitting = false;
+  bool _isProcessingPayment = false;
   List<String> _availableRoomIds = const [];
   Booking? _pendingBooking;
   Payment? _pendingPayment;
@@ -92,87 +93,109 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   }
 
   Future<void> _continuePayment() async {
-    final navigator = Navigator.of(context);
-    await _savedPaymentCardLoad;
-    if (!mounted) return;
-    if (_selectedPaymentMethod == 'card' && _selectedPaymentCard == null) {
-      await _chooseNewPaymentCard();
-      if (!mounted || _selectedPaymentCard == null) return;
-    }
-    final booking = await _ensureBooking();
-    if (booking == null || !mounted) return;
+    if (_isProcessingPayment) return;
+    setState(() => _isProcessingPayment = true);
     try {
-      _pendingPayment = await apiRepository.createPayment(
-        bookingId: booking.id,
-        method: _selectedPaymentMethod == 'qr' ? 'qr' : 'card',
-      );
-    } on ApiException catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+      final navigator = Navigator.of(context);
+      await _savedPaymentCardLoad;
+      if (!mounted) return;
+      if (_selectedPaymentMethod == 'card' && _selectedPaymentCard == null) {
+        await _chooseNewPaymentCard();
+        if (!mounted || _selectedPaymentCard == null) return;
       }
-      return;
-    }
-    if (_selectedPaymentMethod == 'qr') {
+      final booking = await _ensureBooking();
+      if (booking == null || !mounted) return;
       try {
-        final qr = await apiRepository.paymentQr(_pendingPayment!.id);
-        if (!navigator.mounted) return;
-        final completed = await showModalBottomSheet<bool>(
-          context: navigator.context,
-          isScrollControlled: true,
-          backgroundColor: Colors.white,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          builder: (_) => _PaymentQrSheet(
-            qrContent: '${qr['qr_content'] ?? ''}',
-          ),
-        );
-        if (completed == true && mounted) await _simulatePayment();
+        final method = _selectedPaymentMethod == 'qr' ? 'qr' : 'card';
+        if (_pendingPayment?.paymentMethod != method) {
+          _pendingPayment = await apiRepository.createPayment(
+            bookingId: booking.id,
+            method: method,
+          );
+        }
       } on ApiException catch (error) {
+        if (error.statusCode == 409) {
+          final completedPayment = await _findCompletedPayment(booking.id);
+          if (!mounted) return;
+          if (completedPayment != null) {
+            await _showSuccessScreen(completedPayment);
+            return;
+          }
+        }
         if (mounted) {
           ScaffoldMessenger.of(context)
               .showSnackBar(SnackBar(content: Text(error.message)));
         }
+        return;
       }
-      return;
-    }
-    if (_selectedPaymentMethod == 'card') {
-      await _simulatePayment();
-      return;
+      if (_selectedPaymentMethod == 'qr') {
+        try {
+          final qr = await apiRepository.paymentQr(_pendingPayment!.id);
+          if (!navigator.mounted) return;
+          final completed = await showModalBottomSheet<bool>(
+            context: navigator.context,
+            isScrollControlled: true,
+            backgroundColor: Colors.white,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            builder: (_) => _PaymentQrSheet(
+              qrContent: '${qr['qr_content'] ?? ''}',
+            ),
+          );
+          if (completed == true && mounted) await _simulatePayment();
+        } on ApiException catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(error.message)));
+          }
+        }
+        return;
+      }
+      if (_selectedPaymentMethod == 'card') {
+        await _simulatePayment();
+        return;
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessingPayment = false);
     }
   }
 
   Future<void> _simulatePayment() async {
-    if (!mounted) return;
-    showDialog<void>(
+    if (!mounted || _pendingPayment == null || _pendingBooking == null) return;
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    final loadingDialog = showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => const _PaymentLoadingDialog(),
     );
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-    Navigator.of(context).pop();
-    late final Payment payment;
+    Payment? payment;
+    ApiException? paymentError;
     try {
       payment = await apiRepository.simulatePayment(
         paymentId: _pendingPayment!.id,
         result: 'success',
       );
-      if (payment.status.toLowerCase() != 'paid') {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Thanh toán chưa được xác nhận. Đơn vẫn đang chờ xử lý.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
     } on ApiException catch (error) {
-      if (!mounted) return;
+      paymentError = error;
+    } finally {
+      if (rootNavigator.canPop()) rootNavigator.pop();
+      await loadingDialog;
+    }
+    if (!mounted) return;
+
+    if (paymentError != null) {
+      final error = paymentError;
+      if (error.statusCode == 409) {
+        final completedPayment = await _findCompletedPayment(
+          _pendingBooking!.id,
+        );
+        if (!mounted) return;
+        if (completedPayment != null) {
+          await _showSuccessScreen(completedPayment);
+          return;
+        }
+      }
       if (error.statusCode == 500) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -188,8 +211,55 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
       }
       return;
     }
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement<void, void>(
+
+    if (payment == null || !_isPaymentSuccessful(payment.status)) {
+      final completedPayment = await _findCompletedPayment(
+        _pendingBooking!.id,
+      );
+      if (!mounted) return;
+      if (completedPayment != null) {
+        await _showSuccessScreen(completedPayment);
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Thanh toán chưa được xác nhận. Đơn vẫn đang chờ xử lý.',
+          ),
+        ),
+      );
+      return;
+    }
+    await _showSuccessScreen(payment);
+  }
+
+  Future<Payment?> _findCompletedPayment(String bookingId) async {
+    try {
+      final payments = await apiRepository.payments(bookingId);
+      for (final payment in payments.reversed) {
+        if (_isPaymentSuccessful(payment.status)) {
+          try {
+            return await apiRepository.payment(payment.id);
+          } on ApiException {
+            return payment;
+          }
+        }
+      }
+    } on ApiException {
+      // Keep the original payment error visible when the status lookup fails.
+    }
+    return null;
+  }
+
+  Future<void> _showSuccessScreen(Payment payment) async {
+    if (!mounted || _pendingBooking == null) return;
+    final emailFeedback = _paymentEmailFeedback(payment, _pendingBooking!);
+    if (emailFeedback != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(emailFeedback)));
+    }
+    await Navigator.of(context).pushReplacement<void, void>(
       MaterialPageRoute<void>(
         builder: (_) => BookingSuccessScreen(
           booking: _pendingBooking!,
@@ -206,7 +276,28 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
   void initState() {
     super.initState();
     _loadAvailableRooms();
+    _loadCurrentUser();
     _savedPaymentCardLoad = _loadSavedPaymentCard();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    try {
+      final user = await apiRepository.me();
+      if (!mounted) return;
+      setState(() {
+        if (_nameController.text.trim().isEmpty) {
+          _nameController.text = user.fullName;
+        }
+        if (_phoneController.text.trim().isEmpty) {
+          _phoneController.text = user.phone;
+        }
+        if (_emailController.text.trim().isEmpty) {
+          _emailController.text = user.email;
+        }
+      });
+    } on ApiException {
+      // The guest can still enter contact details manually if not signed in.
+    }
   }
 
   Future<void> _loadSavedPaymentCard() async {
@@ -334,6 +425,15 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
             ),
           ],
         ),
+        actions: [
+          if (MediaQuery.viewInsetsOf(context).bottom > 0)
+            TextButton.icon(
+              onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
+              icon: const Icon(Icons.keyboard_hide_rounded),
+              label: const Text('Xong'),
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+            ),
+        ],
       ),
       body: _step == 0
           ? Form(
@@ -441,6 +541,9 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                           hint: 'name@example.com',
                           icon: Icons.email_outlined,
                           keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) =>
+                              FocusScope.of(context).unfocus(),
                           validator: (value) {
                             final email = value?.trim() ?? '';
                             if (!RegExp(
@@ -462,6 +565,8 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                       controller: _requestController,
                       minLines: 3,
                       maxLines: 5,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => FocusScope.of(context).unfocus(),
                       decoration: _bookingInputDecoration(
                         hint: 'Ví dụ: phòng tầng cao, giường phụ...',
                       ),
@@ -577,7 +682,7 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
                   ? _continueToPayment
                   : _selectedPaymentMethod == null
                       ? null
-                      : _isSubmitting
+                      : _isSubmitting || _isProcessingPayment
                           ? null
                           : _continuePayment,
               style: FilledButton.styleFrom(
@@ -872,12 +977,15 @@ class _RoomBookingPageState extends State<RoomBookingPage> {
     required IconData icon,
     required String? Function(String?) validator,
     TextInputType? keyboardType,
+    TextInputAction textInputAction = TextInputAction.next,
+    ValueChanged<String>? onFieldSubmitted,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       validator: validator,
-      textInputAction: TextInputAction.next,
+      textInputAction: textInputAction,
+      onFieldSubmitted: onFieldSubmitted,
       decoration: _bookingInputDecoration(
         label: label,
         hint: hint,

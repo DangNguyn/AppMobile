@@ -54,9 +54,13 @@ class ApiClient {
     final headers = <String, String>{'Content-Type': 'application/json'};
     if (auth) {
       final value = await token;
-      if (value != null && value.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $value';
+      if (value == null || value.trim().isEmpty) {
+        throw const ApiException(
+          401,
+          'Phiên đăng nhập không còn hiệu lực. Vui lòng đăng nhập lại.',
+        );
       }
+      headers['Authorization'] = 'Bearer ${value.trim()}';
     }
     final request = http.Request(method, uri)..headers.addAll(headers);
     if (body != null) request.body = jsonEncode(body);

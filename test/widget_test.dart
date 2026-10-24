@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:app_mobile/account_page.dart';
 import 'package:app_mobile/booking_app.dart' as hotel_booking;
 import 'package:app_mobile/main.dart';
 
@@ -13,6 +14,54 @@ void main() {
       'user_birth_date': '2006-07-11',
       'user_gender': 'Nam',
     });
+  });
+
+  testWidgets('A 16 digit card number can be submitted without Luhn check', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              key: const ValueKey('open_card_form'),
+              onPressed: () => Navigator.of(context).push<SavedPaymentCard>(
+                MaterialPageRoute<SavedPaymentCard>(
+                  builder: (_) => const AddPaymentCardPage(
+                    submitLabel: 'Dùng thẻ này',
+                  ),
+                ),
+              ),
+              child: const Text('Mở form thẻ'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('open_card_form')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('payment_card_holder_field')),
+      'Huy Nguyen',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('payment_card_number_field')),
+      '1234567890123456',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('payment_card_expiry_field')),
+      '12/30',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('payment_card_cvv_field')),
+      '123',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('confirm_add_payment_card_button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Thêm thẻ'), findsNothing);
   });
 
   testWidgets('Onboarding saves preferences and user details to account', (
@@ -323,9 +372,8 @@ void main() {
           find.byKey(const ValueKey('home_search_blue_background')),
         )
         .dy;
-    final searchFormBottom = tester
-        .getBottomLeft(find.byKey(const ValueKey('home_search_form')))
-        .dy;
+    final searchFormBottom =
+        tester.getBottomLeft(find.byKey(const ValueKey('home_search_form'))).dy;
     expect(
       (blueBackgroundBottom - searchFormBottom).abs(),
       lessThanOrEqualTo(2),
@@ -1012,12 +1060,10 @@ void main() {
     await tester.tap(privacyItem);
     await tester.pumpAndSettle();
 
-    expect(find.text('Hồ sơ riêng tư'), findsOneWidget);
-    expect(find.text('Đặt tab Bộ sưu tập thành Riêng tư'), findsOneWidget);
-    expect(find.text('Đặt tab Đánh giá thành Riêng tư'), findsOneWidget);
+    expect(find.text('Quyền riêng tư'), findsOneWidget);
+    expect(find.text('Đặt hồ sơ thành riêng tư'), findsOneWidget);
+    expect(find.byType(Switch), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('private_profile_toggle')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('private_reviews_toggle')));
     await tester.pumpAndSettle();
 
     await tester.pageBack();
@@ -1028,12 +1074,6 @@ void main() {
     expect(
       tester
           .widget<Switch>(find.byKey(const ValueKey('private_profile_toggle')))
-          .value,
-      isTrue,
-    );
-    expect(
-      tester
-          .widget<Switch>(find.byKey(const ValueKey('private_reviews_toggle')))
           .value,
       isTrue,
     );

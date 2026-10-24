@@ -262,6 +262,30 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
     }
   }
 
+  Future<void> _openMapExternally() async {
+    final hotel = _hotel;
+    final query = [hotel?.name ?? widget.hotelName, hotel?.address, hotel?.city]
+        .whereType<String>()
+        .where((value) => value.trim().isNotEmpty)
+        .join(', ');
+    final uri = Uri.https(
+        'www.google.com', '/maps/search/', {'api': '1', 'query': query});
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không thể mở bản đồ trên thiết bị.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không thể mở bản đồ trên thiết bị.')),
+        );
+      }
+    }
+  }
+
   @override
   void didUpdateWidget(covariant HotelDetailPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -418,6 +442,15 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                       ? _hotel!.address
                       : 'Địa chỉ đang được cập nhật.',
                   style: detailStyle,
+                ),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _openMapExternally,
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('Mở vị trí trên bản đồ'),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _HotelNearbyPlacesMap(

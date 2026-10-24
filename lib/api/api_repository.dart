@@ -48,6 +48,51 @@ class ApiRepository {
 
   Future<ApiUser> me() async =>
       ApiUser.fromJson(_data(await client.get('/api/auth/me', auth: true)));
+
+  Future<List<ApiUserSearchResult>> searchUsers(String query) async {
+    final response = await client.get('/api/users/search', auth: true, query: {
+      'q': query.trim(),
+    });
+    return _items(response).map(ApiUserSearchResult.fromJson).toList();
+  }
+
+  Future<List<ApiPost>> myPosts({int page = 1, int limit = 20}) async {
+    final response = await client.get('/api/posts/mine', auth: true, query: {
+      'page': '$page',
+      'limit': '$limit',
+    });
+    return _items(response)
+        .map(ApiPost.fromJson)
+        .where((post) => post.status == 'published')
+        .toList();
+  }
+
+  Future<List<ApiPost>> postsByUser(String userId,
+      {int page = 1, int limit = 20}) async {
+    final response = await client.get('/api/posts/users/$userId', query: {
+      'page': '$page',
+      'limit': '$limit',
+    });
+    return _items(response).map(ApiPost.fromJson).toList();
+  }
+
+  Future<ApiPost> createPost({
+    required String title,
+    required String location,
+    required int rating,
+    required String content,
+  }) async =>
+      ApiPost.fromJson(_data(await client.post('/api/posts', auth: true, body: {
+        'title': title,
+        'location': location,
+        'rating': rating,
+        'content': content,
+      })));
+
+  Future<void> deletePost(String postId) async {
+    await client.delete('/api/posts/$postId', auth: true);
+  }
+
   Future<ApiUser> updateCurrentUser({
     required String fullName,
     required String phone,
@@ -109,7 +154,7 @@ class ApiRepository {
           .toList();
   Future<List<String>> hotelImages(String id) async =>
       _items(await client.get('/api/hotels/$id/images'))
-          .map((e) => '${e['image_url'] ?? ''}')
+          .map((e) => '${e['image_url'] ?? ''}'.trim())
           .where((e) => e.isNotEmpty)
           .toList();
   Future<List<Review>> reviews(String hotelId) async =>
@@ -202,6 +247,15 @@ class ApiRepository {
       })));
   Future<Map<String, dynamic>> paymentQr(String paymentId) async =>
       _data(await client.get('/api/payments/$paymentId/qr', auth: true));
+  Future<Payment> payment(String paymentId) async {
+    final response = await client.get('/api/payments/$paymentId', auth: true);
+    final data = _data(response);
+    if (response is Map && response['email'] is Map) {
+      data['email_status'] = (response['email'] as Map)['status'];
+    }
+    return Payment.fromJson(data);
+  }
+
   Future<Payment> simulatePayment({
     required String paymentId,
     required String result,

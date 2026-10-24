@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lottie/lottie.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'destination_images.dart';
 import 'ui_motion.dart';
@@ -700,22 +701,23 @@ class _ArticleGallery extends StatelessWidget {
             separatorBuilder: (context, index) => const SizedBox(width: 12),
             itemBuilder: (context, index) => ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: Image.network(
-                imageUrls[index],
-                width: 220,
-                height: 150,
-                fit: BoxFit.cover,
-                semanticLabel: 'Ảnh minh họa ${index + 1} của điểm đến',
-                errorBuilder: (context, error, stackTrace) => const SizedBox(
+              child: Semantics(
+                image: true,
+                label: 'Ảnh minh họa ${index + 1} của điểm đến',
+                child: CachedNetworkImage(
+                  imageUrl: imageUrls[index],
                   width: 220,
-                  child: _ArticleImageFallback(),
+                  height: 150,
+                  fit: BoxFit.cover,
+                  errorWidget: (context, error, stackTrace) => const SizedBox(
+                    width: 220,
+                    child: _ArticleImageFallback(),
+                  ),
+                  placeholder: (context, url) => const SizedBox(
+                    width: 220,
+                    child: _ArticleImageFallback(),
+                  ),
                 ),
-                loadingBuilder: (context, child, progress) => progress == null
-                    ? child
-                    : const SizedBox(
-                        width: 220,
-                        child: _ArticleImageFallback(),
-                      ),
               ),
             ),
           ),

@@ -25,6 +25,64 @@ class ApiUser {
       );
 }
 
+class ApiUserSearchResult {
+  const ApiUserSearchResult({
+    required this.id,
+    required this.fullName,
+    this.avatar,
+    this.username,
+  });
+
+  final String id;
+  final String fullName;
+  final String? avatar;
+  final String? username;
+
+  factory ApiUserSearchResult.fromJson(Map<String, dynamic> json) =>
+      ApiUserSearchResult(
+        id: '${json['id'] ?? ''}',
+        fullName: '${json['full_name'] ?? ''}',
+        avatar: json['avatar'] as String?,
+        username: json['username'] as String?,
+      );
+}
+
+class ApiPost {
+  const ApiPost({
+    required this.id,
+    required this.title,
+    required this.location,
+    required this.rating,
+    required this.content,
+    this.status = 'published',
+    this.authorName,
+    this.authorAvatar,
+    this.createdAt,
+  });
+
+  final String id;
+  final String title;
+  final String location;
+  final int rating;
+  final String content;
+  final String status;
+  final String? authorName;
+  final String? authorAvatar;
+  final DateTime? createdAt;
+
+  factory ApiPost.fromJson(Map<String, dynamic> json) => ApiPost(
+        id: '${json['id'] ?? ''}',
+        title: '${json['title'] ?? ''}',
+        location: '${json['location'] ?? ''}',
+        rating: _integer(json['rating']),
+        content: '${json['content'] ?? ''}',
+        status: '${json['status'] ?? 'published'}',
+        authorName: json['author_name'] as String?,
+        authorAvatar: json['author_avatar'] as String?,
+        createdAt: _date(json['created_at']),
+      );
+}
+
 class Hotel {
   const Hotel({
     required this.id,
@@ -59,21 +117,21 @@ class Hotel {
 }
 
 class HotelAmenity {
-      const HotelAmenity({
-        required this.id,
-        required this.name,
-        this.description = '',
-      });
+  const HotelAmenity({
+    required this.id,
+    required this.name,
+    this.description = '',
+  });
 
-      final String id;
-      final String name;
-      final String description;
+  final String id;
+  final String name;
+  final String description;
 
-      factory HotelAmenity.fromJson(Map<String, dynamic> json) => HotelAmenity(
-            id: '${json['id'] ?? ''}',
-            name: '${json['name'] ?? ''}',
-            description: '${json['description'] ?? ''}',
-          );
+  factory HotelAmenity.fromJson(Map<String, dynamic> json) => HotelAmenity(
+        id: '${json['id'] ?? ''}',
+        name: '${json['name'] ?? ''}',
+        description: '${json['description'] ?? ''}',
+      );
 }
 
 class RoomType {
@@ -131,7 +189,8 @@ class Room {
         roomNumber: '${json['room_number'] ?? ''}',
         status: '${json['status'] ?? ''}',
         roomTypeName: json['room_type_name'] as String?,
-        maxGuests: json['max_guests'] == null ? null : _integer(json['max_guests']),
+        maxGuests:
+            json['max_guests'] == null ? null : _integer(json['max_guests']),
         basePrice: _number(json['base_price']),
       );
 }
@@ -155,6 +214,7 @@ class Booking {
     this.guest,
     this.paymentStatus,
     this.paymentMethod,
+    this.bookingEmail,
   });
 
   final String id;
@@ -174,6 +234,7 @@ class Booking {
   final BookingGuest? guest;
   final String? paymentStatus;
   final String? paymentMethod;
+  final String? bookingEmail;
 
   factory Booking.fromJson(Map<String, dynamic> json) => Booking(
         id: '${json['id'] ?? ''}',
@@ -191,10 +252,12 @@ class Booking {
         hotelName: json['hotel_name'] as String?,
         roomTypeName: json['room_type_name'] as String?,
         guest: json['guest'] is Map
-            ? BookingGuest.fromJson((json['guest'] as Map).cast<String, dynamic>())
+            ? BookingGuest.fromJson(
+                (json['guest'] as Map).cast<String, dynamic>())
             : null,
         paymentStatus: json['payment_status'] as String?,
         paymentMethod: json['payment_method'] as String?,
+        bookingEmail: json['booking_email'] as String?,
       );
 
   Booking copyWith({
@@ -204,6 +267,7 @@ class Booking {
     BookingGuest? guest,
     String? paymentStatus,
     String? paymentMethod,
+    String? bookingEmail,
   }) =>
       Booking(
         id: id,
@@ -223,6 +287,7 @@ class Booking {
         guest: guest ?? this.guest,
         paymentStatus: paymentStatus ?? this.paymentStatus,
         paymentMethod: paymentMethod ?? this.paymentMethod,
+        bookingEmail: bookingEmail ?? this.bookingEmail,
       );
 }
 
@@ -278,8 +343,7 @@ class FavoriteHotel extends Hotel {
     super.starRating,
   });
 
-  factory FavoriteHotel.fromJson(Map<String, dynamic> json) =>
-      FavoriteHotel(
+  factory FavoriteHotel.fromJson(Map<String, dynamic> json) => FavoriteHotel(
         id: '${json['id'] ?? ''}',
         name: '${json['name'] ?? 'Khách sạn'}',
         description: '${json['description'] ?? ''}',
@@ -403,8 +467,11 @@ class VoucherValidation {
       );
 }
 
-double? _number(dynamic value) => value is num ? value.toDouble() : double.tryParse('$value');
-int _integer(dynamic value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
-DateTime? _date(dynamic value) => value == null ? null : DateTime.tryParse('$value');
+double? _number(dynamic value) =>
+    value is num ? value.toDouble() : double.tryParse('$value');
+int _integer(dynamic value) =>
+    value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+DateTime? _date(dynamic value) =>
+    value == null ? null : DateTime.tryParse('$value');
 List<Map<String, dynamic>> _list(dynamic value) =>
     value is List ? value.whereType<Map<String, dynamic>>().toList() : const [];

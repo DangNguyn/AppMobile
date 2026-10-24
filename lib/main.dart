@@ -2,11 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:carousel_slider/carousel_slider.dart';
 import 'dart:convert';
 
 import 'account_page.dart';
-import 'ai_support_page.dart';
+import 'auth_screen.dart';
+import 'chat_query_parser.dart';
 import 'booking_app.dart' as hotel_booking;
 import 'destination_images.dart';
 import 'explore_page.dart';
@@ -17,6 +18,9 @@ import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
 import 'voucher_storage_service.dart';
+import 'app_formatters.dart';
+import 'local_app_storage.dart';
+import 'notification_service.dart';
 
 enum VietnameseInputMode { telex, vni }
 
@@ -38,8 +42,7 @@ class _ConversationStore {
   static const _key = 'fomogo_saved_conversations';
 
   static Future<List<_SavedConversation>> load() async {
-    final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString(_key);
+    final raw = await LocalAppStorage.getString(_key);
     if (raw == null || raw.isEmpty) return <_SavedConversation>[];
     final decoded = jsonDecode(raw);
     if (decoded is! List) return <_SavedConversation>[];
@@ -88,8 +91,7 @@ class _ConversationStore {
   }
 
   static Future<void> _write(List<_SavedConversation> conversations) async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(
+    await LocalAppStorage.setString(
       _key,
       jsonEncode(
         conversations
@@ -108,6 +110,326 @@ class _ConversationStore {
             )
             .toList(),
       ),
+    );
+  }
+}
+
+enum _AppNotificationType { hotel, voucher, article }
+
+class _AppNotification {
+  const _AppNotification({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.message,
+    required this.targetId,
+    required this.location,
+    required this.image,
+    required this.createdAt,
+    required this.isRead,
+  });
+
+  final String id;
+  final _AppNotificationType type;
+  final String title;
+  final String message;
+  final String targetId;
+  final String location;
+  final String image;
+  final DateTime createdAt;
+  final bool isRead;
+
+  _AppNotification copyWith({bool? isRead}) => _AppNotification(
+        id: id,
+        type: type,
+        title: title,
+        message: message,
+        targetId: targetId,
+        location: location,
+        image: image,
+        createdAt: createdAt,
+        isRead: isRead ?? this.isRead,
+      );
+
+  factory _AppNotification.fromJson(Map<String, dynamic> json) =>
+      _AppNotification(
+        id: '${json['id'] ?? ''}',
+        type: _AppNotificationType.values.firstWhere(
+          (type) => type.name == json['type'],
+          orElse: () => _AppNotificationType.article,
+        ),
+        title: '${json['title'] ?? ''}',
+        message: '${json['message'] ?? ''}',
+        targetId: '${json['targetId'] ?? ''}',
+        location: '${json['location'] ?? ''}',
+        image: '${json['image'] ?? ''}',
+        createdAt: DateTime.tryParse('${json['createdAt']}') ?? DateTime.now(),
+        isRead: json['isRead'] == true,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type.name,
+        'title': title,
+        'message': message,
+        'targetId': targetId,
+        'location': location,
+        'image': image,
+        'createdAt': createdAt.toIso8601String(),
+        'isRead': isRead,
+      };
+}
+
+class _NotificationStore {
+  static const _keyPrefix = 'fomogo_notifications_';
+  static Future<void>? _loginNotificationFuture;
+  static final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
+
+  static Future<String> _userKey() async {
+    final email = (await userService.getEmail()).trim().toLowerCase();
+    return '$_keyPrefix${email.isEmpty ? 'guest' : email}';
+  }
+
+  static Future<List<_AppNotification>> load() async {
+    final stored = await _loadStored();
+    final settings = await Future.wait<bool>([
+      userService.getPromotionNotificationsPref(),
+      userService.getTravelInspirationPref(),
+    ]);
+    final allowPromotions = settings[0];
+    final allowTravelInspiration = settings[1];
+    return stored.where((notification) {
+      switch (notification.type) {
+        case _AppNotificationType.hotel:
+        case _AppNotificationType.voucher:
+          return allowPromotions;
+        case _AppNotificationType.article:
+          return allowTravelInspiration;
+      }
+    }).toList();
+  }
+
+  static Future<List<_AppNotification>> _loadStored() async {
+    final raw = await LocalAppStorage.getString(await _userKey());
+    if (raw == null) return [];
+    try {
+      final items = jsonDecode(raw) as List<dynamic>;
+      return items
+          .whereType<Map<String, dynamic>>()
+          .map(_AppNotification.fromJson)
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> save(List<_AppNotification> notifications) async {
+    await LocalAppStorage.setString(
+      await _userKey(),
+      jsonEncode(notifications.map((item) => item.toJson()).toList()),
+    );
+  }
+
+  static Future<void> refreshUnreadCount() async {
+    final notifications = await load();
+    unreadCount.value = notifications.where((item) => !item.isRead).length;
+  }
+
+  /// Simulate one welcome push when the home page is reached after login.
+  /// The date guard keeps app rebuilds and inbox visits from creating duplicates.
+  static Future<void> createLoginNotificationIfNeeded() {
+    final pending = _loginNotificationFuture;
+    if (pending != null) return pending;
+    final operation = _createLoginNotificationIfNeeded();
+    _loginNotificationFuture = operation;
+    return operation.whenComplete(() {
+      if (identical(_loginNotificationFuture, operation)) {
+        _loginNotificationFuture = null;
+      }
+    });
+  }
+
+  static Future<void> waitForLoginNotification() async {
+    final pending = _loginNotificationFuture;
+    if (pending != null) await pending;
+  }
+
+  static Future<void> _createLoginNotificationIfNeeded() async {
+    final key = await _userKey();
+    final today = DateTime.now();
+    final dayKey = '${today.year}-${today.month}-${today.day}';
+    final loginKey = '${key}_last_login_notice_day';
+    if (await LocalAppStorage.getString(loginKey) == dayKey) return;
+
+    final allowPromotions = await userService.getPromotionNotificationsPref();
+    final allowTravelInspiration = await userService.getTravelInspirationPref();
+    if (!allowPromotions && !allowTravelInspiration) return;
+
+    var existing = await _loadStored();
+    if (existing.isEmpty) {
+      existing = await _buildInitialHistory();
+    }
+    final fresh = await _buildLoginNotice(
+      allowPromotions: allowPromotions,
+      allowTravelInspiration: allowTravelInspiration,
+    );
+    if (fresh != null) {
+      await save([fresh, ...existing]);
+      await AppNotificationService.instance.show(
+        id: fresh.id.hashCode,
+        title: fresh.title,
+        body: fresh.message,
+      );
+    }
+    await LocalAppStorage.setString(loginKey, dayKey);
+  }
+
+  static Future<List<_AppNotification>> _buildInitialHistory() async {
+    final now = DateTime.now();
+    final history = <_AppNotification>[];
+    final articles = allTravelArticles.take(3).toList();
+    for (var index = 0; index < articles.length; index++) {
+      final article = articles[index];
+      history.add(_AppNotification(
+        id: 'history-article-${article.title.hashCode}',
+        type: _AppNotificationType.article,
+        title: 'Khám phá: ${article.title}',
+        message: article.description,
+        targetId: article.title,
+        location: article.location,
+        image: article.imageUrl,
+        createdAt: now.subtract(Duration(days: index + 1)),
+        isRead: true,
+      ));
+    }
+    try {
+      final vouchers = (await apiRepository.vouchers()).where((voucher) {
+        if (voucher.status.toLowerCase() != 'active') return false;
+        if (voucher.startDate != null && now.isBefore(voucher.startDate!)) {
+          return false;
+        }
+        if (voucher.endDate != null && now.isAfter(voucher.endDate!)) {
+          return false;
+        }
+        return true;
+      }).take(2);
+      for (final voucher in vouchers) {
+        history.add(_voucherNotification(
+          voucher,
+          now.subtract(Duration(days: history.length + 1)),
+          isRead: true,
+        ));
+      }
+    } catch (_) {
+      // Static articles still provide a useful inbox while offline.
+    }
+    for (final article in allTravelArticles.skip(articles.length)) {
+      if (history.length >= 5) break;
+      history.add(_AppNotification(
+        id: 'history-article-${article.title.hashCode}',
+        type: _AppNotificationType.article,
+        title: 'Khám phá: ${article.title}',
+        message: article.description,
+        targetId: article.title,
+        location: article.location,
+        image: article.imageUrl,
+        createdAt: now.subtract(Duration(days: history.length + 1)),
+        isRead: true,
+      ));
+    }
+    return history;
+  }
+
+  static Future<_AppNotification?> _buildLoginNotice({
+    required bool allowPromotions,
+    required bool allowTravelInspiration,
+  }) async {
+    final now = DateTime.now();
+    if (allowPromotions) {
+      try {
+        final vouchers = await apiRepository.vouchers();
+        final active = vouchers.where((voucher) {
+          if (voucher.status.toLowerCase() != 'active') return false;
+          if (voucher.startDate != null && now.isBefore(voucher.startDate!)) {
+            return false;
+          }
+          if (voucher.endDate != null && now.isAfter(voucher.endDate!)) {
+            return false;
+          }
+          return true;
+        }).toList();
+        if (active.isNotEmpty) {
+          active.sort((a, b) => b.discountValue.compareTo(a.discountValue));
+          return _voucherNotification(active.first, now, isRead: false);
+        }
+      } catch (_) {
+        // Try hotel recommendations before falling back to travel inspiration.
+      }
+      try {
+        final hotels = await apiRepository.hotels();
+        if (hotels.isNotEmpty) {
+          final hotel = hotels.first;
+          final imageUrls = await apiRepository.hotelImages(hotel.id);
+          return _AppNotification(
+            id: 'login-hotel-${now.microsecondsSinceEpoch}',
+            type: _AppNotificationType.hotel,
+            title: hotel.name,
+            message:
+                'Gợi ý lưu trú tại ${hotel.city.isEmpty ? 'điểm đến nổi bật' : hotel.city}. Chạm để xem thông tin khách sạn và phòng.',
+            targetId: hotel.id,
+            location: hotel.city.isEmpty ? hotel.name : hotel.city,
+            image: imageUrls.isEmpty ? '' : imageUrls.first,
+            createdAt: now,
+            isRead: false,
+          );
+        }
+      } catch (_) {
+        // Use travel inspiration if it is enabled and hotel APIs are offline.
+      }
+    }
+    if (!allowTravelInspiration) return null;
+    final article = allTravelArticles.last;
+    return _AppNotification(
+      id: 'login-article-${now.microsecondsSinceEpoch}',
+      type: _AppNotificationType.article,
+      title: 'Gợi ý chuyến đi: ${article.title}',
+      message: article.description,
+      targetId: article.title,
+      location: article.location,
+      image: article.imageUrl,
+      createdAt: now,
+      isRead: false,
+    );
+  }
+
+  static _AppNotification _voucherNotification(
+    Voucher voucher,
+    DateTime createdAt, {
+    required bool isRead,
+  }) {
+    final isPercent = voucher.discountType.toLowerCase() == 'percent';
+    final discount = isPercent
+        ? 'giảm ${voucher.discountValue.round()}%'
+        : 'giảm ${_formatMainVnd(voucher.discountValue)}';
+    const images = [
+      'assets/images/voucher_1.jpg',
+      'assets/images/voucher_2.jpg',
+      'assets/images/voucher_3.jpg',
+      'assets/images/voucher_4.jpg',
+    ];
+    return _AppNotification(
+      id: 'voucher-${voucher.code}-${createdAt.millisecondsSinceEpoch}',
+      type: _AppNotificationType.voucher,
+      title: 'Ưu đãi mới ${voucher.code}: $discount',
+      message: voucher.minOrder > 0
+          ? 'Áp dụng cho đơn từ ${_formatMainVnd(voucher.minOrder)}. Xem điều kiện ưu đãi.'
+          : 'Voucher đang hoạt động. Chạm để xem chi tiết và điều kiện áp dụng.',
+      targetId: voucher.code,
+      location: 'Ưu đãi FomoGo',
+      image: images[voucher.code.hashCode.abs() % images.length],
+      createdAt: createdAt,
+      isRead: isRead,
     );
   }
 }
@@ -325,7 +647,19 @@ class VietnameseUnicodeInput {
   }
 }
 
-void main() {
+final GlobalKey<NavigatorState> _appNavigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await LocalAppStorage.initialize();
+  await AppNotificationService.instance.initialize(
+    onTap: (_) {
+      _appNavigatorKey.currentState?.push(
+        MaterialPageRoute<void>(
+            builder: (_) => const CustomerSupportPage(initialTab: 1)),
+      );
+    },
+  );
   runApp(const MyApp());
 }
 
@@ -335,6 +669,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _appNavigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Travel booking UI',
       scrollBehavior: const FixedEdgeScrollBehavior(),
@@ -344,7 +679,15 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2F80ED)),
         fontFamily: 'Roboto',
       ),
+<<<<<<< HEAD
       home: const AppEntry(),
+=======
+      home: SplashScreen(
+        homeBuilder: (_) => AuthGate(
+          homeBuilder: (_) => const TravelHomePage(),
+        ),
+      ),
+>>>>>>> origin/main
     );
   }
 }
@@ -372,9 +715,13 @@ class AppEntry extends StatelessWidget {
           );
         }
         if (!snapshot.data!) {
-          return WelcomeScreen(homeBuilder: (_) => const TravelHomePage());
+          return WelcomeScreen(
+            homeBuilder: (_) => AuthGate(
+              homeBuilder: (_) => const TravelHomePage(),
+            ),
+          );
         }
-        return const TravelHomePage();
+        return AuthGate(homeBuilder: (_) => const TravelHomePage());
       },
     );
   }
@@ -413,14 +760,15 @@ class _TravelHomePageState extends State<TravelHomePage> {
   }
 
   Future<void> _restartOnboardingAfterLogout() async {
-    unawaited(apiRepository.client.clearToken());
+    await apiRepository.client.clearToken();
     await userService.clearCustomerData();
     if (!mounted) return;
     _savedArticleTitles.clear();
     Navigator.of(context).pushAndRemoveUntil<void>(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            WelcomeScreen(homeBuilder: (_) => const TravelHomePage()),
+        builder: (_) => AuthScreen(
+          homeBuilder: (_) => const TravelHomePage(),
+        ),
       ),
       (route) => false,
     );
@@ -430,6 +778,9 @@ class _TravelHomePageState extends State<TravelHomePage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    unawaited(_NotificationStore.createLoginNotificationIfNeeded().then(
+      (_) => _NotificationStore.refreshUnreadCount(),
+    ));
   }
 
   void _handleScroll() {
@@ -774,10 +1125,38 @@ class CustomerSupportIconButton extends StatefulWidget {
 class _CustomerSupportIconButtonState extends State<CustomerSupportIconButton> {
   bool _isHovered = false;
 
-  void _openSupportPage() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const AiSupportPage()),
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_NotificationStore.refreshUnreadCount());
+    userService.notificationPreferenceRevision.addListener(
+      _refreshUnreadCountForPreferences,
     );
+  }
+
+  void _refreshUnreadCountForPreferences() {
+    unawaited(_NotificationStore.createLoginNotificationIfNeeded().then(
+      (_) => _NotificationStore.refreshUnreadCount(),
+    ));
+  }
+
+  @override
+  void dispose() {
+    userService.notificationPreferenceRevision.removeListener(
+      _refreshUnreadCountForPreferences,
+    );
+    super.dispose();
+  }
+
+  Future<void> _openSupportPage() async {
+    await _NotificationStore.createLoginNotificationIfNeeded();
+    await _NotificationStore.waitForLoginNotification();
+    await _NotificationStore.refreshUnreadCount();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const CustomerSupportPage()),
+    );
+    if (mounted) _NotificationStore.refreshUnreadCount();
   }
 
   @override
@@ -794,10 +1173,35 @@ class _CustomerSupportIconButtonState extends State<CustomerSupportIconButton> {
           onPressed: _openSupportPage,
           padding: EdgeInsets.zero,
           visualDensity: VisualDensity.compact,
-          icon: Icon(
-            Icons.chat_bubble_outline_rounded,
-            color: _isHovered ? const Color(0xFFB8D9FF) : Colors.white,
-            size: 21,
+          icon: ValueListenableBuilder<int>(
+            valueListenable: _NotificationStore.unreadCount,
+            builder: (context, unreadCount, _) => Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  color: _isHovered ? const Color(0xFFB8D9FF) : Colors.white,
+                  size: 21,
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: -5,
+                    top: -4,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF2D72),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFF0E1F38),
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -806,7 +1210,9 @@ class _CustomerSupportIconButtonState extends State<CustomerSupportIconButton> {
 }
 
 class CustomerSupportPage extends StatefulWidget {
-  const CustomerSupportPage({super.key});
+  const CustomerSupportPage({super.key, this.initialTab = 0});
+
+  final int initialTab;
 
   @override
   State<CustomerSupportPage> createState() => _CustomerSupportPageState();
@@ -838,19 +1244,36 @@ Future<bool> _confirmConversationDeletion(BuildContext context) async {
 }
 
 class _CustomerSupportPageState extends State<CustomerSupportPage> {
-  int _selectedTab = 0;
+  late int _selectedTab = widget.initialTab == 1 ? 1 : 0;
   int _selectedFilter = 0;
+  final hotel_booking.HotelSearchSelection _hotelSearchSelection =
+      hotel_booking.HotelSearchSelection();
   List<_SavedConversation> _conversations = const [];
+  List<_AppNotification> _notifications = const [];
 
   @override
   void initState() {
     super.initState();
     _loadConversations();
+    _loadNotifications();
   }
 
   Future<void> _loadConversations() async {
     final conversations = await _ConversationStore.load();
     if (mounted) setState(() => _conversations = conversations);
+  }
+
+  Future<void> _loadNotifications() async {
+    final notifications = await _NotificationStore.load();
+    if (!mounted) return;
+    setState(() => _notifications = notifications);
+    await _NotificationStore.refreshUnreadCount();
+  }
+
+  @override
+  void dispose() {
+    _hotelSearchSelection.dispose();
+    super.dispose();
   }
 
   @override
@@ -1032,55 +1455,58 @@ class _CustomerSupportPageState extends State<CustomerSupportPage> {
         ),
         Expanded(
           child: _conversations.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.support_agent_rounded,
-                          color: Color(0xFF2A6EEB),
-                          size: 88,
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Hôm nay chúng tôi có thể giúp gì cho bạn?',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF252A30),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
+              ? SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.support_agent_rounded,
+                            color: Color(0xFF2A6EEB),
+                            size: 88,
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Bạn không có yêu cầu nào đang hoạt động. Bắt đầu cuộc trò chuyện mới để được hỗ trợ về đặt chỗ hoặc các câu hỏi khác.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF7B8288),
-                            fontSize: 15,
-                            height: 1.45,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        FilledButton(
-                          onPressed: _openNewConversation,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFE4F4FC),
-                            foregroundColor: const Color(0xFF0E1F38),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 22,
-                              vertical: 14,
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Hôm nay chúng tôi có thể giúp gì cho bạn?',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF252A30),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
                             ),
-                            shape: const StadiumBorder(),
                           ),
-                          child: const Text(
-                            'Bắt đầu cuộc trò chuyện mới',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Bạn không có yêu cầu nào đang hoạt động. Bắt đầu cuộc trò chuyện mới để được hỗ trợ về đặt chỗ hoặc các câu hỏi khác.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF7B8288),
+                              fontSize: 15,
+                              height: 1.45,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 20),
+                          FilledButton(
+                            onPressed: _openNewConversation,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFE4F4FC),
+                              foregroundColor: const Color(0xFF0E1F38),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 22,
+                                vertical: 14,
+                              ),
+                              shape: const StadiumBorder(),
+                            ),
+                            child: const Text(
+                              'Bắt đầu cuộc trò chuyện',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 )
@@ -1188,30 +1614,222 @@ class _CustomerSupportPageState extends State<CustomerSupportPage> {
   }
 
   Widget _buildNotifications() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+    if (_notifications.isEmpty) {
+      return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(
-              Icons.notifications_none_rounded,
-              color: Color(0xFF2A6EEB),
-              size: 80,
-            ),
-            SizedBox(height: 18),
-            Text(
-              'Chưa có thông báo',
-              style: TextStyle(
-                color: Color(0xFF252A30),
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+          children: [
+            Icon(Icons.notifications_none_rounded,
+                color: Color(0xFF2A6EEB), size: 76),
+            SizedBox(height: 16),
+            Text('Chưa có thông báo',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadNotifications,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        itemCount: _notifications.length,
+        separatorBuilder: (_, index) => const SizedBox(height: 12),
+        itemBuilder: (context, index) => _NotificationCard(
+          notification: _notifications[index],
+          onTap: () => _openNotification(_notifications[index]),
         ),
       ),
     );
+  }
+
+  Future<void> _openNotification(_AppNotification notification) async {
+    final index =
+        _notifications.indexWhere((item) => item.id == notification.id);
+    if (index >= 0 && !_notifications[index].isRead) {
+      final updated = [..._notifications];
+      updated[index] = updated[index].copyWith(isRead: true);
+      setState(() => _notifications = updated);
+      await _NotificationStore.save(updated);
+      await _NotificationStore.refreshUnreadCount();
+    }
+    if (!mounted) return;
+    switch (notification.type) {
+      case _AppNotificationType.article:
+        final article = allTravelArticles.cast<TravelArticle?>().firstWhere(
+              (item) => item?.title == notification.targetId,
+              orElse: () => null,
+            );
+        if (article == null) return;
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => TravelArticleDetailPage(
+            article: article,
+            onExploreDestination: _openHotelSearchResults,
+          ),
+        ));
+      case _AppNotificationType.hotel:
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => hotel_booking.HotelDetailPage(
+            hotelName: notification.title,
+            hotelId: notification.targetId,
+            selection: _hotelSearchSelection,
+          ),
+        ));
+      case _AppNotificationType.voucher:
+        try {
+          final voucher = await apiRepository.voucher(notification.targetId);
+          if (!mounted) return;
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => _VoucherPromotionDetailPage(
+              voucher: voucher,
+              imageAsset: notification.image,
+            ),
+          ));
+        } catch (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Chưa tải được ưu đãi: $error')),
+          );
+        }
+    }
+  }
+
+  void _openHotelSearchResults(String location) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => hotel_booking.HotelSearchResultsPage(
+        location: location,
+        selection: _hotelSearchSelection,
+      ),
+    ));
+  }
+}
+
+class _NotificationCard extends StatelessWidget {
+  const _NotificationCard({required this.notification, required this.onTap});
+
+  final _AppNotification notification;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = notification.image;
+    return Material(
+      color: notification.isRead ? Colors.white : const Color(0xFFEAF3FF),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 88,
+                  height: 96,
+                  child: image.startsWith('assets/')
+                      ? Image.asset(image,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, error, stackTrace) =>
+                              _notificationImageFallback())
+                      : notification.type == _AppNotificationType.article ||
+                              notification.type == _AppNotificationType.hotel
+                          ? DestinationImage(
+                              location: notification.location,
+                              networkUrl: image.isEmpty
+                                  ? 'https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=320&q=80'
+                                  : image,
+                            )
+                          : _notificationImageFallback(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            notification.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF172536),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        if (!notification.isRead) ...[
+                          const SizedBox(width: 6),
+                          const CircleAvatar(
+                              radius: 4, backgroundColor: Color(0xFF0875F5)),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      notification.message,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Color(0xFF667085), fontSize: 12, height: 1.35),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        const Icon(Icons.place_outlined,
+                            size: 14, color: Color(0xFF2A6EEB)),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            notification.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Color(0xFF718096), fontSize: 11),
+                          ),
+                        ),
+                        Text(
+                          _notificationAge(notification.createdAt),
+                          style: const TextStyle(
+                              color: Color(0xFF8B95A5), fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _notificationImageFallback() => Container(
+        color: const Color(0xFFE8F1FF),
+        alignment: Alignment.center,
+        child: Icon(
+          switch (notification.type) {
+            _AppNotificationType.hotel => Icons.hotel_rounded,
+            _AppNotificationType.voucher => Icons.local_offer_rounded,
+            _AppNotificationType.article => Icons.landscape_rounded,
+          },
+          color: const Color(0xFF2A6EEB),
+          size: 32,
+        ),
+      );
+
+  String _notificationAge(DateTime value) {
+    final difference = DateTime.now().difference(value);
+    if (difference.inMinutes < 1) return 'Vừa xong';
+    if (difference.inHours < 1) return '${difference.inMinutes} phút trước';
+    if (difference.inDays < 1) return '${difference.inHours} giờ trước';
+    return '${difference.inDays} ngày trước';
   }
 }
 
@@ -1275,9 +1893,45 @@ class _AiConversationPageState extends State<_AiConversationPage> {
   Future<void> _respondTo(String text) async {
     final normalized = _normalize(text);
     try {
+      if (_isVoucherQuestion(normalized)) {
+        final vouchers = (await apiRepository.vouchers())
+            .where(_isChatVoucherAvailable)
+            .toList();
+        final requestedPrice = ChatQueryParser.priceRange(text);
+        final estimatedOrder = requestedPrice.maximum ??
+            requestedPrice.exact ??
+            requestedPrice.minimum;
+        final eligible = vouchers
+            .where((voucher) =>
+                estimatedOrder == null || voucher.minOrder <= estimatedOrder)
+            .toList()
+          ..sort((a, b) => b.discountValue.compareTo(a.discountValue));
+        if (eligible.isEmpty) {
+          _addAssistantMessage(
+            vouchers.isEmpty
+                ? 'Hiện API chưa có voucher nào đang hoạt động. Bạn có thể xem lại mục Ưu đãi sau.'
+                : 'Mình chưa thấy voucher phù hợp với giá đơn bạn nêu. Bạn thử kiểm tra các mã trong mục Ưu đãi hoặc điều chỉnh giá phòng nhé.',
+          );
+          return;
+        }
+        final voucherLines = eligible.take(6).map((voucher) {
+          final discount = voucher.discountType.toLowerCase() == 'percent'
+              ? 'giảm ${voucher.discountValue.toStringAsFixed(0)}%'
+              : 'giảm ${_formatMainVnd(voucher.discountValue)}';
+          final minimum = voucher.minOrder > 0
+              ? ', đơn tối thiểu ${_formatMainVnd(voucher.minOrder)}'
+              : '';
+          return '• ${voucher.code}: $discount$minimum';
+        }).join('\n');
+        _addAssistantMessage(
+          'Các voucher đang hoạt động${estimatedOrder == null ? '' : ' có thể áp dụng cho đơn khoảng ${_formatMainVnd(estimatedOrder)}'}:\n$voucherLines\n\nĐiều kiện và số tiền giảm cuối cùng sẽ được API xác nhận khi bạn áp dụng mã lúc đặt phòng.',
+        );
+        return;
+      }
+
       if (_isHotelSearch(normalized)) {
         final hotels = await apiRepository.hotels();
-        final city = _cityFromMessage(normalized);
+        final city = ChatQueryParser.city(normalized);
         final filtered = city == null
             ? hotels
             : hotels
@@ -1286,6 +1940,9 @@ class _AiConversationPageState extends State<_AiConversationPage> {
                 .toList();
 
         if (_isRoomRequest(normalized)) {
+          final guests = ChatQueryParser.guests(normalized);
+          final nights = ChatQueryParser.nights(normalized) ?? 1;
+          final price = ChatQueryParser.priceRange(text);
           if (filtered.isEmpty) {
             _addAssistantMessage(
               'Mình chưa tìm thấy khách sạn phù hợp${city == null ? '' : ' ở $city'} để kiểm tra phòng trống.',
@@ -1293,30 +1950,40 @@ class _AiConversationPageState extends State<_AiConversationPage> {
             return;
           }
           final today = DateTime.now();
-          final tomorrow = today.add(const Duration(days: 1));
+          final checkIn = today.add(const Duration(days: 1));
+          final checkOut = checkIn.add(Duration(days: nights));
           final availableByHotel = await Future.wait(
-            filtered.map(
-              (hotel) => apiRepository
-                  .availableRooms(
-                    hotelId: hotel.id,
-                    checkIn: _dateString(today),
-                    checkOut: _dateString(tomorrow),
-                  )
-                  .then((rooms) => (hotel: hotel, rooms: rooms)),
-            ),
+            filtered.take(12).map(
+                  (hotel) => apiRepository
+                      .availableRooms(
+                        hotelId: hotel.id,
+                        checkIn: _dateString(checkIn),
+                        checkOut: _dateString(checkOut),
+                      )
+                      .then((rooms) => (hotel: hotel, rooms: rooms)),
+                ),
           );
           final available = availableByHotel
+              .map((result) => (
+                    hotel: result.hotel,
+                    rooms: result.rooms.where((room) {
+                      final capacityMatches = guests == null ||
+                          (room.maxGuests != null && room.maxGuests! >= guests);
+                      return capacityMatches && price.matches(room.basePrice);
+                    }).toList(),
+                  ))
               .where((result) => result.rooms.isNotEmpty)
               .toList();
           if (available.isNotEmpty) {
             final result = available.first;
             _addAssistantMessage(
-              'Mình tìm thấy ${result.rooms.length} phòng trống tại ${result.hotel.name}${city == null ? '' : ' ở $city'}.',
+              'Mình tìm thấy ${available.length} khách sạn${city == null ? '' : ' ở $city'} có phòng trống${guests == null ? '' : ' cho $guests khách'}${price.description.isEmpty ? '' : ' với mức giá ${price.description}'} trong $nights đêm. Vuốt để xem khách sạn phù hợp; phòng trống tại ${result.hotel.name} được liệt kê bên dưới.',
+              hotels: available.map((item) => item.hotel).toList(),
               rooms: result.rooms,
             );
           } else {
             _addAssistantMessage(
-              'Hiện chưa có phòng trống${city == null ? '' : ' ở $city'} cho ngày mai.',
+              'Mình chưa tìm được phòng trống${city == null ? '' : ' ở $city'}${guests == null ? '' : ' đủ chỗ cho $guests khách'}${price.description.isEmpty ? '' : ' với giá ${price.description}'} trong $nights đêm tới. Bạn thử nới mức giá, đổi ngày hoặc giảm số khách nhé.',
             );
           }
           return;
@@ -1336,8 +2003,29 @@ class _AiConversationPageState extends State<_AiConversationPage> {
         return;
       }
 
+      if (_isPaymentQuestion(normalized)) {
+        _addAssistantMessage(
+          'Khi đặt phòng, bạn có thể chọn VietQR hoặc thẻ thanh toán ở bước thanh toán. Với VietQR, quét mã rồi nhấn “Tôi đã thanh toán” để ứng dụng kiểm tra trạng thái; khi API xác nhận thành công, thông tin đặt phòng sẽ xuất hiện trong mục Đặt chỗ của tôi. Nếu giao dịch vẫn đang chờ, hãy kiểm tra lại sau ít phút và đừng thanh toán lặp lại.',
+        );
+        return;
+      }
+
+      if (_isCancellationQuestion(normalized)) {
+        _addAssistantMessage(
+          'Bạn mở mục Đặt chỗ của tôi, chọn đơn cần hỗ trợ và kiểm tra trạng thái cùng điều kiện hủy của đơn. Quyền hủy hoặc hoàn tiền phụ thuộc trạng thái đặt phòng và chính sách của khách sạn; gửi mã đặt phòng nếu bạn cần hướng dẫn cụ thể.',
+        );
+        return;
+      }
+
+      if (_isBookingQuestion(normalized)) {
+        _addAssistantMessage(
+          'Để đặt phòng: tìm khách sạn theo thành phố và ngày lưu trú, chọn khách sạn rồi chọn loại phòng còn trống, điền thông tin khách và xác nhận thanh toán. Bạn cho mình biết thành phố, số khách và khoảng giá để mình tìm khách sạn phù hợp ngay nhé.',
+        );
+        return;
+      }
+
       _addAssistantMessage(
-        'Mình đã nhận được yêu cầu của bạn. Bạn có thể nói rõ thêm điều bạn muốn tìm hoặc thao tác cần thực hiện để mình hỗ trợ chính xác hơn nhé.',
+        'Mình chưa nhận ra đúng ý câu hỏi. Hiện mình có thể tìm khách sạn/phòng theo thành phố, số khách và giá mỗi đêm; tra voucher đang hoạt động; hoặc hướng dẫn thanh toán, đặt/hủy phòng và tài khoản. Bạn gửi thêm thành phố, ngày ở hay mã đặt phòng nếu có nhé.',
       );
     } on ApiException catch (error) {
       _addAssistantMessage(
@@ -1411,15 +2099,20 @@ class _AiConversationPageState extends State<_AiConversationPage> {
   bool _isHotelSearch(String text) =>
       text.contains('khach san') ||
       text.contains('hotel') ||
-      text.contains('phong trong') ||
-      text.contains('phong nao') ||
-      text.contains('con bao nhieu');
+      text.contains('phong') ||
+      text.contains('room') ||
+      text.contains('cho nghi') ||
+      text.contains('luu tru') ||
+      text.contains('gia') ||
+      text.contains('de xuat') ||
+      text.contains('goi y');
 
   bool _isRoomRequest(String text) =>
       text.contains('phong') ||
       text.contains('room') ||
       text.contains('cho nghi') ||
-      text.contains('luu tru');
+      text.contains('luu tru') ||
+      text.contains('gia');
 
   bool _isAccountQuestion(String text) =>
       text.contains('dang xuat') ||
@@ -1427,6 +2120,42 @@ class _AiConversationPageState extends State<_AiConversationPage> {
       text.contains('thong tin ca nhan') ||
       text.contains('doi mat khau') ||
       text.contains('cap nhat thong tin');
+
+  bool _isVoucherQuestion(String text) =>
+      text.contains('voucher') ||
+      text.contains('ma giam') ||
+      text.contains('giam gia') ||
+      text.contains('khuyen mai') ||
+      text.contains('uu dai');
+
+  bool _isPaymentQuestion(String text) =>
+      text.contains('thanh toan') ||
+      text.contains('vietqr') ||
+      text.contains('quet ma') ||
+      text.contains('the tin dung') ||
+      text.contains('giao dich');
+
+  bool _isBookingQuestion(String text) =>
+      text.contains('dat phong') ||
+      text.contains('dat cho') ||
+      text.contains('booking') ||
+      text.contains('reserv');
+
+  bool _isCancellationQuestion(String text) =>
+      text.contains('huy phong') ||
+      text.contains('huy don') ||
+      text.contains('hoan tien') ||
+      text.contains('doi ngay');
+
+  bool _isChatVoucherAvailable(Voucher voucher) {
+    if (voucher.status.toLowerCase() != 'active') return false;
+    final now = DateTime.now();
+    if (voucher.startDate != null && now.isBefore(voucher.startDate!)) {
+      return false;
+    }
+    if (voucher.endDate != null && now.isAfter(voucher.endDate!)) return false;
+    return true;
+  }
 
   String _accountHelpFor(String text) {
     if (text.contains('dang xuat')) {
@@ -1441,101 +2170,7 @@ class _AiConversationPageState extends State<_AiConversationPage> {
     return 'Bạn vào mục Tài khoản ở thanh điều hướng dưới cùng để quản lý hồ sơ, cài đặt và bảo mật. Nếu muốn chỉnh thông tin, chọn “Chỉnh sửa hồ sơ”.';
   }
 
-  String _normalize(String value) {
-    const replacements = <String, String>{
-      'à': 'a',
-      'á': 'a',
-      'ạ': 'a',
-      'ả': 'a',
-      'ã': 'a',
-      'â': 'a',
-      'ầ': 'a',
-      'ấ': 'a',
-      'ậ': 'a',
-      'ẩ': 'a',
-      'ẫ': 'a',
-      'ă': 'a',
-      'ằ': 'a',
-      'ắ': 'a',
-      'ặ': 'a',
-      'ẳ': 'a',
-      'ẵ': 'a',
-      'è': 'e',
-      'é': 'e',
-      'ẹ': 'e',
-      'ẻ': 'e',
-      'ẽ': 'e',
-      'ê': 'e',
-      'ề': 'e',
-      'ế': 'e',
-      'ệ': 'e',
-      'ể': 'e',
-      'ễ': 'e',
-      'ì': 'i',
-      'í': 'i',
-      'ị': 'i',
-      'ỉ': 'i',
-      'ĩ': 'i',
-      'ò': 'o',
-      'ó': 'o',
-      'ọ': 'o',
-      'ỏ': 'o',
-      'õ': 'o',
-      'ô': 'o',
-      'ồ': 'o',
-      'ố': 'o',
-      'ộ': 'o',
-      'ổ': 'o',
-      'ỗ': 'o',
-      'ơ': 'o',
-      'ờ': 'o',
-      'ớ': 'o',
-      'ợ': 'o',
-      'ở': 'o',
-      'ỡ': 'o',
-      'ù': 'u',
-      'ú': 'u',
-      'ụ': 'u',
-      'ủ': 'u',
-      'ũ': 'u',
-      'ư': 'u',
-      'ừ': 'u',
-      'ứ': 'u',
-      'ự': 'u',
-      'ử': 'u',
-      'ữ': 'u',
-      'ỳ': 'y',
-      'ý': 'y',
-      'ỵ': 'y',
-      'ỷ': 'y',
-      'ỹ': 'y',
-      'đ': 'd',
-    };
-    var result = value.toLowerCase();
-    replacements.forEach((from, to) {
-      result = result.replaceAll(from, to);
-    });
-    return result.replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
-  }
-
-  String? _cityFromMessage(String text) {
-    const cities = [
-      'da lat',
-      'da nang',
-      'nha trang',
-      'ha noi',
-      'ho chi minh',
-      'phu quoc',
-      'hoi an',
-      'ha long',
-      'hue',
-      'sa pa',
-    ];
-    for (final city in cities) {
-      if (text.contains(city)) return city == 'da lat' ? 'Đà Lạt' : city;
-    }
-    return null;
-  }
+  String _normalize(String value) => ChatQueryParser.normalize(value);
 
   String _dateString(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-'
@@ -1549,21 +2184,15 @@ class _AiConversationPageState extends State<_AiConversationPage> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF0E1F38),
         foregroundColor: Colors.white,
-        title: const Row(
+        centerTitle: true,
+        title: const Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Color(0xFF2A6EEB),
-              child: Icon(Icons.auto_awesome, size: 19, color: Colors.white),
-            ),
-            SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Trợ lý FomoGo', style: TextStyle(fontSize: 17)),
-                Text('Luôn sẵn sàng hỗ trợ',
-                    style: TextStyle(fontSize: 11, color: Color(0xFFBFD8FF))),
-              ],
+            Text('Trợ lý FomoGo', style: TextStyle(fontSize: 17)),
+            Text(
+              'Luôn sẵn sàng hỗ trợ',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Color(0xFFBFD8FF)),
             ),
           ],
         ),
@@ -1925,11 +2554,36 @@ class BookingPage extends StatefulWidget {
 class _BookingPageState extends State<BookingPage> {
   late Future<List<Booking>> _bookings;
   bool _showAllBookings = false;
+  bool _showBookingHistory = false;
+  bool _bookingPreferenceLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    _bookings = _loadBookings();
+    _bookings = Future.value(const <Booking>[]);
+    _loadBookingHistoryPreference();
+    userService.notificationPreferenceRevision.addListener(
+      _loadBookingHistoryPreference,
+    );
+  }
+
+  @override
+  void dispose() {
+    userService.notificationPreferenceRevision.removeListener(
+      _loadBookingHistoryPreference,
+    );
+    super.dispose();
+  }
+
+  Future<void> _loadBookingHistoryPreference() async {
+    final enabled = await userService.getBookingUpdatesPref();
+    if (!mounted) return;
+    if (_bookingPreferenceLoaded && enabled == _showBookingHistory) return;
+    setState(() {
+      _showBookingHistory = enabled;
+      _bookingPreferenceLoaded = true;
+      _bookings = enabled ? _loadBookings() : Future.value(const <Booking>[]);
+    });
   }
 
   Future<List<Booking>> _loadBookings() async {
@@ -2074,107 +2728,108 @@ class _BookingPageState extends State<BookingPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
             children: [
-              FutureBuilder<List<Booking>>(
-                future: _bookings,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _BookingSectionHeading(
-                          title: 'Lịch sử đặt phòng',
-                        ),
-                        SizedBox(height: 24),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    );
-                  }
-                  if (snapshot.hasError) {
+              if (_bookingPreferenceLoaded && _showBookingHistory)
+                FutureBuilder<List<Booking>>(
+                  future: _bookings,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _BookingSectionHeading(
+                            title: 'Lịch sử đặt phòng',
+                          ),
+                          SizedBox(height: 24),
+                          Center(child: CircularProgressIndicator()),
+                        ],
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _BookingSectionHeading(
+                            title: 'Lịch sử đặt phòng',
+                          ),
+                          const SizedBox(height: 10),
+                          _BookingHistoryMessage(
+                            message: 'Không thể tải lịch sử đơn hàng.',
+                            actionLabel: 'Thử lại',
+                            onPressed: () =>
+                                setState(() => _bookings = _loadBookings()),
+                          ),
+                        ],
+                      );
+                    }
+                    final bookings = snapshot.data ?? const <Booking>[];
+                    if (bookings.isEmpty) {
+                      return const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _BookingSectionHeading(
+                            title: 'Lịch sử đặt phòng',
+                          ),
+                          SizedBox(height: 10),
+                          _BookingEmptyState(),
+                        ],
+                      );
+                    }
+                    final visibleBookings =
+                        _showAllBookings ? bookings : bookings.take(1).toList();
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const _BookingSectionHeading(
-                          title: 'Lịch sử đặt phòng',
-                        ),
-                        const SizedBox(height: 10),
-                        _BookingHistoryMessage(
-                          message: 'Không thể tải lịch sử đơn hàng.',
-                          actionLabel: 'Thử lại',
-                          onPressed: () =>
-                              setState(() => _bookings = _loadBookings()),
-                        ),
-                      ],
-                    );
-                  }
-                  final bookings = snapshot.data ?? const <Booking>[];
-                  if (bookings.isEmpty) {
-                    return const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _BookingSectionHeading(
-                          title: 'Lịch sử đặt phòng',
-                        ),
-                        SizedBox(height: 10),
-                        _BookingEmptyState(),
-                      ],
-                    );
-                  }
-                  final visibleBookings =
-                      _showAllBookings ? bookings : bookings.take(1).toList();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: _BookingSectionHeading(
-                              title: 'Lịch sử đặt phòng',
-                            ),
-                          ),
-                          if (bookings.length > 1)
-                            TextButton.icon(
-                              key: const ValueKey('toggle_booking_history'),
-                              onPressed: () => setState(
-                                () => _showAllBookings = !_showAllBookings,
-                              ),
-                              icon: Icon(
-                                _showAllBookings
-                                    ? Icons.expand_less_rounded
-                                    : Icons.expand_more_rounded,
-                              ),
-                              label: Text(
-                                _showAllBookings
-                                    ? 'Thu gọn'
-                                    : 'Xem thêm ${bookings.length - 1} đơn',
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 240),
-                        curve: Curves.easeInOut,
-                        alignment: Alignment.topCenter,
-                        child: Column(
+                        Row(
                           children: [
-                            for (final booking in visibleBookings) ...[
-                              _HistoryBookingCard(booking: booking),
-                              const SizedBox(height: 12),
-                            ],
+                            const Expanded(
+                              child: _BookingSectionHeading(
+                                title: 'Lịch sử đặt phòng',
+                              ),
+                            ),
+                            if (bookings.length > 1)
+                              TextButton.icon(
+                                key: const ValueKey('toggle_booking_history'),
+                                onPressed: () => setState(
+                                  () => _showAllBookings = !_showAllBookings,
+                                ),
+                                icon: Icon(
+                                  _showAllBookings
+                                      ? Icons.expand_less_rounded
+                                      : Icons.expand_more_rounded,
+                                ),
+                                label: Text(
+                                  _showAllBookings
+                                      ? 'Thu gọn'
+                                      : 'Xem thêm ${bookings.length - 1} đơn',
+                                ),
+                              ),
                           ],
                         ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+                        const SizedBox(height: 10),
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeInOut,
+                          alignment: Alignment.topCenter,
+                          child: Column(
+                            children: [
+                              for (final booking in visibleBookings) ...[
+                                _HistoryBookingCard(booking: booking),
+                                const SizedBox(height: 12),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: widget.onFindHotel,
                 icon: const Icon(Icons.hotel_outlined),
                 label: const Text('Tìm và đặt phòng khách sạn'),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
               _BookingSectionTitle(
                 title: 'Thư viện Coupon',
                 subtitle: 'Ưu đãi dành cho đặt phòng khách sạn',
@@ -2182,7 +2837,7 @@ class _BookingPageState extends State<BookingPage> {
               ),
               const SizedBox(height: 10),
               const _SavedVoucherCarousel(),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
               _BookingSectionTitle(
                 title: 'Đề xuất tuyệt vời',
                 subtitle: 'Khách sạn phù hợp cho chuyến đi của bạn',
@@ -2190,7 +2845,7 @@ class _BookingPageState extends State<BookingPage> {
               ),
               const SizedBox(height: 10),
               const _RecommendationHotelCarousel(),
-              const SizedBox(height: 22),
+              const SizedBox(height: 16),
               const _BookingSectionHeading(
                 title: 'Tất cả giao dịch và hoạt động khác',
               ),
@@ -2364,15 +3019,7 @@ _HistoryStatus _historyStatus(String value) {
 }
 
 String _formatHistoryMoney(double? value) {
-  final digits = (value ?? 0).round().toString();
-  final formatted = StringBuffer();
-  for (var index = 0; index < digits.length; index++) {
-    if (index > 0 && (digits.length - index) % 3 == 0) {
-      formatted.write('.');
-    }
-    formatted.write(digits[index]);
-  }
-  return '$formatted đ';
+  return formatVnd(value);
 }
 
 class _BookingEmptyState extends StatelessWidget {
@@ -2572,14 +3219,17 @@ class _SavedVoucherCarouselState extends State<_SavedVoucherCarousel> {
             message: 'Mã voucher bạn lưu sẽ xuất hiện tại đây.',
           );
         }
-        return SizedBox(
-          height: 140,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: vouchers.length,
-            separatorBuilder: (_, index) => const SizedBox(width: 12),
-            itemBuilder: (context, index) =>
-                _SavedVoucherCard(voucher: vouchers[index]),
+        return CarouselSlider.builder(
+          itemCount: vouchers.length,
+          itemBuilder: (context, index, realIndex) => Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _SavedVoucherCard(voucher: vouchers[index]),
+          ),
+          options: CarouselOptions(
+            height: 140,
+            viewportFraction: .9,
+            enableInfiniteScroll: false,
+            padEnds: false,
           ),
         );
       },
@@ -2596,7 +3246,7 @@ class _SavedVoucherCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isPercent = voucher.discountType == 'percent';
     return Container(
-      width: 250,
+      width: double.infinity,
       height: 120,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -2757,7 +3407,7 @@ class _RecommendationHotelCarouselState
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
-            height: 274,
+            height: 244,
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
@@ -2773,23 +3423,27 @@ class _RecommendationHotelCarouselState
             message: 'Chưa có khách sạn đề xuất.',
           );
         }
-        return SizedBox(
-          height: 274,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: hotels.length,
-            separatorBuilder: (_, index) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final hotel = hotels[index];
-              final imageRequest = _images.putIfAbsent(
-                hotel.id,
-                () => apiRepository.hotelImages(hotel.id),
-              );
-              return _RecommendationHotelCard(
+        return CarouselSlider.builder(
+          itemCount: hotels.length,
+          itemBuilder: (context, index, realIndex) {
+            final hotel = hotels[index];
+            final imageRequest = _images.putIfAbsent(
+              hotel.id,
+              () => apiRepository.hotelImages(hotel.id),
+            );
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _RecommendationHotelCard(
                 hotel: hotel,
                 imageRequest: imageRequest,
-              );
-            },
+              ),
+            );
+          },
+          options: CarouselOptions(
+            height: 244,
+            viewportFraction: .78,
+            enableInfiniteScroll: false,
+            padEnds: false,
           ),
         );
       },
@@ -2821,7 +3475,7 @@ class _RecommendationHotelCard extends StatelessWidget {
     }
 
     return Container(
-      width: 218,
+      width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -2838,48 +3492,64 @@ class _RecommendationHotelCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                height: 118,
+                height: 140,
                 width: double.infinity,
-                child: FutureBuilder<List<String>>(
-                  future: imageRequest,
-                  builder: (context, snapshot) {
-                    final images = snapshot.data ?? const <String>[];
-                    if (images.isNotEmpty) {
-                      return Image.network(
-                        images.first,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            _mainHotelFallback(),
-                      );
-                    }
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const ColoredBox(
-                        color: Color(0xFFE7EEF5),
-                        child: Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    FutureBuilder<List<String>>(
+                      future: imageRequest,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const ColoredBox(
+                            color: Color(0xFFE7EEF5),
+                            child: Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        }
+                        final images = snapshot.data ?? const <String>[];
+                        final imageUrl =
+                            images.map((url) => url.trim()).firstWhere(
+                                  (url) => url.isNotEmpty,
+                                  orElse: () => '',
+                                );
+                        if (imageUrl.isNotEmpty) {
+                          return Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            errorBuilder: (_, __, ___) => _mainHotelFallback(),
+                          );
+                        }
+                        return _mainHotelFallback();
+                      },
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        height: 24,
+                        color: const Color(0xFF2869AA),
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'Đề xuất',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
                         ),
-                      );
-                    }
-                    return _mainHotelFallback();
-                  },
-                ),
-              ),
-              Container(
-                height: 34,
-                width: double.infinity,
-                color: const Color(0xFF2869AA),
-                alignment: Alignment.center,
-                child: const Text(
-                  'Đề xuất',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2893,7 +3563,7 @@ class _RecommendationHotelCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
                       hotel.city.isEmpty ? hotel.address : hotel.city,
                       maxLines: 1,
@@ -2903,7 +3573,7 @@ class _RecommendationHotelCard extends StatelessWidget {
                         fontSize: 11,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         const Icon(
@@ -2958,19 +3628,11 @@ class _SavedSectionMessage extends StatelessWidget {
 }
 
 String _formatMainVnd(double value) {
-  final digits = value.round().toString();
-  final buffer = StringBuffer();
-  for (var index = 0; index < digits.length; index++) {
-    if (index > 0 && (digits.length - index) % 3 == 0) buffer.write('.');
-    buffer.write(digits[index]);
-  }
-  return '$bufferđ';
+  return formatVnd(value);
 }
 
 String _formatMainDate(DateTime? date) {
-  if (date == null) return '--/--/----';
-  return '${date.day.toString().padLeft(2, '0')}/'
-      '${date.month.toString().padLeft(2, '0')}/${date.year}';
+  return formatVietnameseDate(date, emptyValue: '--/--/----');
 }
 
 Widget _mainHotelFallback() {

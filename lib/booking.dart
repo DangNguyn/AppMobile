@@ -390,7 +390,7 @@ class BookingDetailPage extends StatelessWidget {
         paymentId: payment.id,
         result: 'success',
       );
-      if (result.status.toLowerCase() != 'paid') {
+      if (!_isPaymentSuccessful(result.status)) {
         messenger.showSnackBar(
           const SnackBar(
             content: Text('Thanh toán chưa được xác nhận. Đơn vẫn đang chờ.'),
@@ -399,6 +399,12 @@ class BookingDetailPage extends StatelessWidget {
         return;
       }
       if (!navigator.mounted) return;
+      final emailFeedback = _paymentEmailFeedback(result, booking);
+      if (emailFeedback != null) {
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(emailFeedback)));
+      }
       await navigator.pushReplacement<void, void>(
         MaterialPageRoute<void>(
           builder: (_) => BookingSuccessScreen(
@@ -499,13 +505,7 @@ _BookingStatus _bookingStatus(String value, String? paymentStatus) {
 }
 
 String _formatBookingMoney(double? value) {
-  final digits = (value ?? 0).round().toString();
-  final formatted = StringBuffer();
-  for (var i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 == 0) formatted.write('.');
-    formatted.write(digits[i]);
-  }
-  return '$formatted ₫';
+  return formatVnd(value);
 }
 
 class _StatusBadge extends StatelessWidget {

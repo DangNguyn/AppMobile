@@ -14,6 +14,7 @@ import 'package:lottie/lottie.dart' hide Marker;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'api/api_client.dart';
 import 'api/api_repository.dart';
@@ -24,6 +25,7 @@ import 'voucher_storage_service.dart';
 import 'ui_motion.dart';
 import 'account_page.dart';
 import 'ai_support_page.dart';
+import 'app_formatters.dart';
 
 part 'support.dart';
 part 'booking.dart';
@@ -151,7 +153,7 @@ class _MockVietQrSheetState extends State<_MockVietQrSheet> {
                     _timer?.cancel();
                     Navigator.of(context).pop(true);
                   },
-                  child: const Text('Tôi đã hoàn tất chuyển khoản'),
+                  child: const Text('Tôi đã thanh toán'),
                 ),
               ),
             ],
@@ -230,7 +232,7 @@ class _PaymentQrSheet extends StatelessWidget {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Tôi đã hoàn tất chuyển khoản'),
+                  child: const Text('Tôi đã thanh toán'),
                 ),
               ),
             ],
@@ -243,13 +245,20 @@ class _PaymentLoadingDialog extends StatelessWidget {
   const _PaymentLoadingDialog();
 
   @override
-  Widget build(BuildContext context) => const AlertDialog(
-        content: Row(
-          children: [
-            SizedBox(width: 24, height: 24, child: CircularProgressIndicator()),
-            SizedBox(width: 16),
-            Expanded(child: Text('Đang kết nối cổng thanh toán...')),
-          ],
+  Widget build(BuildContext context) => const PopScope<void>(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(),
+              ),
+              SizedBox(width: 16),
+              Expanded(child: Text('Đang xác nhận thanh toán...')),
+            ],
+          ),
         ),
       );
 }
@@ -314,7 +323,8 @@ class BookingSuccessScreen extends StatelessWidget {
                     ),
                     _successDetail(
                       'Email xác nhận',
-                      _emailStatusLabel(payment.emailStatus),
+                      '${_emailStatusLabel(payment.emailStatus)}'
+                          '${payment.emailStatus?.toLowerCase() == 'sent' && booking.bookingEmail?.trim().isNotEmpty == true ? ' · ${booking.bookingEmail}' : ''}',
                       isLast: true,
                     ),
                   ],
@@ -364,6 +374,19 @@ class BookingSuccessScreen extends StatelessWidget {
       );
 }
 
+bool _isPaymentSuccessful(String status) {
+  switch (status.trim().toLowerCase()) {
+    case 'paid':
+    case 'success':
+    case 'successful':
+    case 'completed':
+    case 'confirmed':
+      return true;
+    default:
+      return false;
+  }
+}
+
 String _paymentMethodLabel(String method) {
   switch (method.toLowerCase()) {
     case 'card':
@@ -380,13 +403,34 @@ String _emailStatusLabel(String? status) {
     case 'sent':
       return 'Đã gửi';
     case 'failed':
-      return 'Thanh toán thành công, gửi email thất bại';
+      return 'Gửi email thất bại';
+    case 'sending':
+      return 'Đang gửi';
+    case 'not_tracked':
+      return 'Backend chưa ghi nhận trạng thái email';
     case 'not_sent':
       return 'Chưa gửi';
     case 'not_applicable':
       return 'Không áp dụng';
     default:
-      return 'Backend chưa trả trạng thái';
+      return 'Chưa có trạng thái email';
+  }
+}
+
+String? _paymentEmailFeedback(Payment payment, Booking booking) {
+  final email = booking.bookingEmail?.trim();
+  switch (payment.emailStatus?.toLowerCase()) {
+    case 'sent':
+      return 'Email xác nhận đã được gửi đến '
+          '${email == null || email.isEmpty ? 'email nhận xác nhận' : email}.';
+    case 'failed':
+      return 'Thanh toán thành công nhưng email xác nhận chưa gửi được.';
+    case 'sending':
+      return 'Thanh toán thành công. Email xác nhận đang được gửi.';
+    case 'not_tracked':
+      return 'Thanh toán thành công nhưng backend chưa ghi nhận trạng thái email.';
+    default:
+      return null;
   }
 }
 
