@@ -1060,12 +1060,10 @@ void main() {
     await tester.tap(privacyItem);
     await tester.pumpAndSettle();
 
-    expect(find.text('Hồ sơ riêng tư'), findsOneWidget);
-    expect(find.text('Đặt tab Bộ sưu tập thành Riêng tư'), findsOneWidget);
-    expect(find.text('Đặt tab Đánh giá thành Riêng tư'), findsOneWidget);
+    expect(find.text('Quyền riêng tư'), findsOneWidget);
+    expect(find.text('Đặt hồ sơ thành riêng tư'), findsOneWidget);
+    expect(find.byType(Switch), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('private_profile_toggle')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('private_reviews_toggle')));
     await tester.pumpAndSettle();
 
     await tester.pageBack();
@@ -1076,12 +1074,6 @@ void main() {
     expect(
       tester
           .widget<Switch>(find.byKey(const ValueKey('private_profile_toggle')))
-          .value,
-      isTrue,
-    );
-    expect(
-      tester
-          .widget<Switch>(find.byKey(const ValueKey('private_reviews_toggle')))
           .value,
       isTrue,
     );

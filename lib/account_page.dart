@@ -8,8 +8,12 @@ import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'ai_support_page.dart';
 import 'user_service.dart';
+import 'notification_service.dart';
 import 'ui_motion.dart';
 import 'personal_profile_page.dart';
+import 'privacy_settings_page.dart';
+
+export 'privacy_settings_page.dart' show PrivacySettingsPage;
 
 const _accountNavy = Color(0xFF0E1F38);
 const _accountBlue = _accountNavy;
@@ -307,6 +311,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       builder: (_) => PersonalProfilePage(
                         fullName: _profile.fullName,
                         username: _profile.username,
+                        isOwner: true,
                       ),
                     ),
                   ),
@@ -762,151 +767,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-class PrivacySettingsPage extends StatefulWidget {
-  const PrivacySettingsPage({super.key});
-
-  @override
-  State<PrivacySettingsPage> createState() => _PrivacySettingsPageState();
-}
-
-class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
-  bool _privateProfile = false;
-  bool _privateReviews = false;
-  bool _isLoaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreferences();
-  }
-
-  Future<void> _loadPreferences() async {
-    final privateProfile = await userService.getPrivateProfilePref();
-    final privateReviews = await userService.getPrivateReviewsPref();
-    if (!mounted) return;
-    setState(() {
-      _privateProfile = privateProfile;
-      _privateReviews = privateReviews;
-      _isLoaded = true;
-    });
-  }
-
-  Future<void> _setPrivateProfile(bool value) async {
-    setState(() => _privateProfile = value);
-    await userService.savePrivateProfilePref(value);
-  }
-
-  Future<void> _setPrivateReviews(bool value) async {
-    setState(() => _privateReviews = value);
-    await userService.savePrivateReviewsPref(value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
-      appBar: AppBar(
-        backgroundColor: _accountNavy,
-        foregroundColor: Colors.white,
-        centerTitle: true,
-        title: const Text(
-          'Hồ sơ riêng tư',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-        ),
-      ),
-      body: _isLoaded
-          ? ListView(
-              children: [
-                _PrivacySettingTile(
-                  key: const ValueKey('private_profile_switch'),
-                  switchKey: const ValueKey('private_profile_toggle'),
-                  title: 'Đặt tab Bộ sưu tập thành Riêng tư',
-                  description:
-                      'Nếu bạn đặt cài đặt này thành riêng tư, các bộ sưu tập đã xuất bản của bạn sẽ không có sẵn cho những người khác xem trên hồ sơ của bạn.',
-                  value: _privateProfile,
-                  onChanged: _setPrivateProfile,
-                ),
-                const SizedBox(height: 12),
-                _PrivacySettingTile(
-                  key: const ValueKey('private_reviews_switch'),
-                  switchKey: const ValueKey('private_reviews_toggle'),
-                  title: 'Đặt tab Đánh giá thành Riêng tư',
-                  description:
-                      'Nếu bạn đặt cài đặt này thành riêng tư, các bài đánh giá đã xuất bản của bạn sẽ không có sẵn cho những người khác xem trên hồ sơ của bạn.',
-                  value: _privateReviews,
-                  onChanged: _setPrivateReviews,
-                ),
-              ],
-            )
-          : const Center(
-              child: AppLoadingIndicator(size: 24),
-            ),
-    );
-  }
-}
-
-class _PrivacySettingTile extends StatelessWidget {
-  const _PrivacySettingTile({
-    super.key,
-    required this.switchKey,
-    required this.title,
-    required this.description,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final Key switchKey;
-  final String title;
-  final String description;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 20, 16, 20),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Color(0xFF303840),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    description,
-                    style: const TextStyle(
-                      color: Color(0xFF899199),
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Switch(
-              key: switchKey,
-              value: value,
-              activeTrackColor: _accountNavy,
-              onChanged: onChanged,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class PasswordSecurityPage extends StatefulWidget {
   const PasswordSecurityPage({super.key});
 
@@ -1298,8 +1158,9 @@ class NotificationSettingsPage extends StatefulWidget {
 
 class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool _bookingUpdates = true;
-  bool _promotions = true;
+  bool _promotions = false;
   bool _travelInspiration = false;
+  bool _isLoaded = false;
 
   @override
   void initState() {
@@ -1308,18 +1169,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   }
 
   Future<void> _loadPreference() async {
-    final enabled = await userService.getNotificationPref();
+    final values = await Future.wait<bool>([
+      userService.getBookingUpdatesPref(),
+      userService.getPromotionNotificationsPref(),
+      userService.getTravelInspirationPref(),
+    ]);
     if (!mounted) return;
     setState(() {
-      _bookingUpdates = enabled;
-      _promotions = enabled;
+      _bookingUpdates = values[0];
+      _promotions = values[1];
+      _travelInspiration = values[2];
+      _isLoaded = true;
     });
-  }
-
-  void _saveNotificationPreference() {
-    userService.saveNotificationPref(
-      _bookingUpdates || _promotions || _travelInspiration,
-    );
   }
 
   @override
@@ -1331,41 +1192,53 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         foregroundColor: Colors.white,
         title: const Text('Cài đặt thông báo'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(top: 16),
-        children: [
-          SwitchListTile(
-            value: _bookingUpdates,
-            activeTrackColor: _accountBlue,
-            title: const Text('Cập nhật đặt phòng'),
-            subtitle: const Text('Thông báo trạng thái đặt chỗ và thanh toán'),
-            onChanged: (value) {
-              setState(() => _bookingUpdates = value);
-              _saveNotificationPreference();
-            },
-          ),
-          SwitchListTile(
-            value: _promotions,
-            activeTrackColor: _accountBlue,
-            title: const Text('Ưu đãi và khuyến mãi'),
-            subtitle: const Text('Nhận thông tin về ưu đãi mới'),
-            onChanged: (value) {
-              setState(() => _promotions = value);
-              _saveNotificationPreference();
-            },
-          ),
-          SwitchListTile(
-            value: _travelInspiration,
-            activeTrackColor: _accountBlue,
-            title: const Text('Cảm hứng du lịch'),
-            subtitle: const Text('Gợi ý điểm đến và nội dung du lịch'),
-            onChanged: (value) {
-              setState(() => _travelInspiration = value);
-              _saveNotificationPreference();
-            },
-          ),
-        ],
-      ),
+      body: _isLoaded
+          ? ListView(
+              padding: const EdgeInsets.only(top: 16),
+              children: [
+                SwitchListTile(
+                  value: _bookingUpdates,
+                  activeTrackColor: _accountBlue,
+                  title: const Text('Cập nhật đặt phòng'),
+                  subtitle:
+                      const Text('Thông báo trạng thái đặt chỗ và thanh toán'),
+                  onChanged: (value) async {
+                    setState(() => _bookingUpdates = value);
+                    await userService.saveBookingUpdatesPref(value);
+                    if (value) {
+                      await AppNotificationService.instance.requestPermission();
+                    }
+                  },
+                ),
+                SwitchListTile(
+                  value: _promotions,
+                  activeTrackColor: _accountBlue,
+                  title: const Text('Ưu đãi và khuyến mãi'),
+                  subtitle: const Text('Nhận thông tin về ưu đãi mới'),
+                  onChanged: (value) async {
+                    setState(() => _promotions = value);
+                    await userService.savePromotionNotificationsPref(value);
+                    if (value) {
+                      await AppNotificationService.instance.requestPermission();
+                    }
+                  },
+                ),
+                SwitchListTile(
+                  value: _travelInspiration,
+                  activeTrackColor: _accountBlue,
+                  title: const Text('Cảm hứng du lịch'),
+                  subtitle: const Text('Gợi ý điểm đến và nội dung du lịch'),
+                  onChanged: (value) async {
+                    setState(() => _travelInspiration = value);
+                    await userService.saveTravelInspirationPref(value);
+                    if (value) {
+                      await AppNotificationService.instance.requestPermission();
+                    }
+                  },
+                ),
+              ],
+            )
+          : const Center(child: CircularProgressIndicator()),
     );
   }
 }

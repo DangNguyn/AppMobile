@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 String? destinationAssetFor(String location) {
   final normalized = location.toLowerCase();
@@ -32,12 +33,29 @@ class DestinationImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final asset = destinationAssetFor(location);
-    if (asset == null) return Image.network(networkUrl, fit: fit);
+    if (asset == null) return _networkImage();
     return Image.asset(
       asset,
       fit: fit,
-      errorBuilder: (context, error, stackTrace) =>
-          Image.network(networkUrl, fit: fit),
+      errorBuilder: (context, error, stackTrace) => _networkImage(),
     );
   }
+
+  Widget _networkImage() {
+    if (networkUrl.trim().isEmpty) return _fallback();
+    return CachedNetworkImage(
+      imageUrl: networkUrl,
+      fit: fit,
+      placeholder: (_, __) => _fallback(),
+      errorWidget: (_, __, ___) => _fallback(),
+    );
+  }
+
+  Widget _fallback() => const ColoredBox(
+        color: Color(0xFFE7EEF5),
+        child: Center(
+          child:
+              Icon(Icons.landscape_rounded, color: Color(0xFF9AA9B8), size: 34),
+        ),
+      );
 }

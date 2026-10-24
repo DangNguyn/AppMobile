@@ -8,6 +8,52 @@ import 'splash_screen.dart';
 import 'user_service.dart';
 import 'ui_motion.dart';
 
+/// Resolves the secure JWT session before exposing features that require auth.
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key, required this.homeBuilder});
+
+  final WidgetBuilder homeBuilder;
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  late Future<bool> _session;
+
+  @override
+  void initState() {
+    super.initState();
+    _session = _resolveSession();
+  }
+
+  Future<bool> _resolveSession() async {
+    if (await apiRepository.client.token == null) return false;
+    try {
+      await apiRepository.me();
+      return true;
+    } catch (_) {
+      // ApiClient clears an expired or rejected JWT on HTTP 401. On a
+      // connection error, returning to sign in lets the user retry login.
+      return false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<bool>(
+        future: _session,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.data == true) return widget.homeBuilder(context);
+          return AuthScreen(homeBuilder: widget.homeBuilder);
+        },
+      );
+}
+
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key, required this.homeBuilder});
 
@@ -66,6 +112,10 @@ class _AuthScreenState extends State<AuthScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       _showError(_messageForApiError(error));
+    } catch (_) {
+      if (!mounted) return;
+      _showError(
+          'Không thể hoàn tất đăng nhập trên thiết bị này. Vui lòng thử lại.');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
