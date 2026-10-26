@@ -679,15 +679,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2F80ED)),
         fontFamily: 'Roboto',
       ),
-<<<<<<< HEAD
       home: const AppEntry(),
-=======
-      home: SplashScreen(
-        homeBuilder: (_) => AuthGate(
-          homeBuilder: (_) => const TravelHomePage(),
-        ),
-      ),
->>>>>>> origin/main
     );
   }
 }
