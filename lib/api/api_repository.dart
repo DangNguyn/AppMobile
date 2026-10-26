@@ -49,6 +49,21 @@ class ApiRepository {
   Future<ApiUser> me() async =>
       ApiUser.fromJson(_data(await client.get('/api/auth/me', auth: true)));
 
+  Future<ApiUser> currentUserProfile() async => ApiUser.fromJson(
+        _data(await client.get('/api/users/me', auth: true)),
+      );
+
+  Future<ApiUser> updatePrivateProfile(bool isPrivate) async =>
+      ApiUser.fromJson(
+        _data(
+          await client.put(
+            '/api/users/me',
+            auth: true,
+            body: {'is_private': isPrivate},
+          ),
+        ),
+      );
+
   Future<List<ApiUserSearchResult>> searchUsers(String query) async {
     final response = await client.get('/api/users/search', auth: true, query: {
       'q': query.trim(),

@@ -1381,7 +1381,7 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: AppLoadingIndicator(size: 24),
                   )
                 : Icon(_isSaved
                     ? Icons.bookmark_rounded
@@ -1408,27 +1408,8 @@ class _HotelDetailPageState extends State<HotelDetailPage> {
             child: CustomScrollView(
               controller: _detailScrollController,
               slivers: [
-                SliverToBoxAdapter(
-                  child: _buildHotelHero()
-                      .animate()
-                      .fadeIn(duration: AppMotion.entranceDuration)
-                      .slideY(
-                        begin: 0.04,
-                        duration: AppMotion.entranceDuration,
-                      ),
-                ),
-                SliverToBoxAdapter(
-                  child: _buildHotelSections()
-                      .animate()
-                      .fadeIn(
-                        delay: AppMotion.entranceStagger,
-                        duration: AppMotion.entranceDuration,
-                      )
-                      .slideY(
-                        begin: 0.04,
-                        duration: AppMotion.entranceDuration,
-                      ),
-                ),
+                SliverToBoxAdapter(child: _buildHotelHero()),
+                SliverToBoxAdapter(child: _buildHotelSections()),
               ],
             ),
           ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 abstract final class AppTypography {
@@ -56,7 +58,7 @@ abstract final class AppTypography {
 }
 
 abstract final class AppMotion {
-  static const pageDuration = Duration(milliseconds: 300);
+  static const pageDuration = Duration(milliseconds: 420);
   static const sheetAnimationStyle = AnimationStyle(
     duration: Duration(milliseconds: 320),
     reverseDuration: Duration(milliseconds: 240),
@@ -70,16 +72,80 @@ abstract final class AppMotion {
     reverseCurve: Curves.easeInCubic,
   );
   static const interactionDuration = Duration(milliseconds: 180);
-  static const entranceDuration = Duration(milliseconds: 360);
-  static const entranceStagger = Duration(milliseconds: 45);
+  static const entranceDuration = Duration(milliseconds: 460);
+  static const entranceStagger = Duration(milliseconds: 55);
   static const sectionDuration = Duration(milliseconds: 260);
+}
+
+class AppEntranceSwitcher extends StatelessWidget {
+  const AppEntranceSwitcher({
+    super.key,
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => child;
+}
+
+class AppStaggeredReveal extends StatefulWidget {
+  const AppStaggeredReveal({
+    super.key,
+    required this.child,
+    this.order = 0,
+  });
+
+  final Widget child;
+  final int order;
+
+  @override
+  State<AppStaggeredReveal> createState() => _AppStaggeredRevealState();
+}
+
+class _AppStaggeredRevealState extends State<AppStaggeredReveal> {
+  Timer? _timer;
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final delay = AppMotion.entranceStagger * widget.order.clamp(0, 6);
+    _timer = Timer(delay, () {
+      if (mounted) setState(() => _visible = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      return widget.child;
+    }
+    return AnimatedOpacity(
+      opacity: _visible ? 1 : 0,
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      child: AnimatedSlide(
+        offset: _visible ? Offset.zero : const Offset(0, 0.018),
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutCubic,
+        child: widget.child,
+      ),
+    );
+  }
 }
 
 class AppPageTransitionsBuilder extends PageTransitionsBuilder {
   const AppPageTransitionsBuilder();
 
   @override
-  Duration get transitionDuration => AppMotion.pageDuration;
+  Duration get transitionDuration => AppMotion.entranceDuration;
 
   @override
   Widget buildTransitions<T>(
@@ -89,32 +155,7 @@ class AppPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return child;
-
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-    final position = Tween<Offset>(
-      begin: const Offset(0.035, 0),
-      end: Offset.zero,
-    ).animate(curved);
-    final outgoing = CurvedAnimation(
-      parent: secondaryAnimation,
-      curve: Curves.easeInOutCubic,
-    );
-
-    return SlideTransition(
-      position: Tween<Offset>(
-        begin: Offset.zero,
-        end: const Offset(-0.012, 0),
-      ).animate(outgoing),
-      child: FadeTransition(
-        opacity: curved,
-        child: SlideTransition(position: position, child: child),
-      ),
-    );
+    return child;
   }
 }
 
@@ -138,7 +179,7 @@ class AppLoadingIndicator extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox.square(
         dimension: size,
         child: CircularProgressIndicator(
-          strokeWidth: 2.4,
+          strokeWidth: 2,
           color: color,
         ),
       );

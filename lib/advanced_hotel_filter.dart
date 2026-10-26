@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'api/api_repository.dart';
 import 'api/models.dart';
 import 'destination_images.dart';
+import 'ui_motion.dart';
 
 class AdvancedHotelFilterPage extends StatefulWidget {
   const AdvancedHotelFilterPage({
@@ -312,7 +313,7 @@ class _AdvancedHotelFilterPageState extends State<AdvancedHotelFilterPage>
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: Color(0xFF173B68)))
+              ? const Center(child: AppLoadingIndicator(color: Color(0xFF173B68)))
               : hotel == null && _isFilterEmpty
                   ? Center(
                       child: Column(
@@ -700,7 +701,7 @@ class _HotelSwipeCard extends StatelessWidget {
                     }
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return Container(color: const Color(0xFFE8ECF2),
-                          child: const Center(child: CircularProgressIndicator()));
+                          child: const Center(child: AppLoadingIndicator()));
                     }
                     return _fallbackImage();
                   },

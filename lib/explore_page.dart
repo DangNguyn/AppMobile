@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lottie/lottie.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -119,85 +118,82 @@ class _ExplorePageState extends State<ExplorePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Khám phá Việt Nam',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-              ).animate().fadeIn(duration: AppMotion.entranceDuration).slideY(
-                    begin: -0.08,
-                    duration: AppMotion.entranceDuration,
+              const AppStaggeredReveal(
+                child: Text(
+                  'Khám phá Việt Nam',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
                   ),
+                ),
+              ),
               const SizedBox(height: 4),
-              Text(
-                'Cảm hứng cho chuyến đi tiếp theo của bạn',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.75),
-                  fontSize: 13,
+              const AppStaggeredReveal(
+                order: 1,
+                child: Text(
+                  'Cảm hứng cho chuyến đi tiếp theo của bạn',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (value) =>
-                          setState(() => _searchQuery = value.trim()),
-                      decoration: InputDecoration(
-                        hintText: 'Tìm danh lam, thành phố Việt Nam...',
-                        hintStyle: const TextStyle(color: Color(0xFF858B94)),
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          color: Color(0xFF6E7783),
-                        )
-                            .animate()
-                            .fadeIn(
-                              delay: AppMotion.entranceStagger,
-                              duration: AppMotion.entranceDuration,
-                            )
-                            .slideY(
-                              begin: 0.04,
-                              duration: AppMotion.entranceDuration,
-                            ),
-                        suffixIcon: _searchQuery.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Xóa tìm kiếm',
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                                icon: const Icon(Icons.close),
-                              ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 0,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
+              AppStaggeredReveal(
+                order: 2,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (value) =>
+                            setState(() => _searchQuery = value.trim()),
+                        decoration: InputDecoration(
+                          hintText: 'Tìm danh lam, thành phố Việt Nam...',
+                          hintStyle:
+                              const TextStyle(color: Color(0xFF858B94)),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: Color(0xFF6E7783),
+                          ),
+                          suffixIcon: _searchQuery.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: 'Xóa tìm kiếm',
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                  },
+                                  icon: const Icon(Icons.close),
+                                ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 0,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Material(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                    child: IconButton(
-                      tooltip: 'Lọc khu vực',
-                      onPressed: _selectRegion,
-                      icon: const Icon(
-                        Icons.tune_rounded,
-                        color: Colors.white,
+                    const SizedBox(width: 10),
+                    Material(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      child: IconButton(
+                        tooltip: 'Lọc khu vực',
+                        onPressed: _selectRegion,
+                        icon: const Icon(
+                          Icons.tune_rounded,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -206,29 +202,31 @@ class _ExplorePageState extends State<ExplorePage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'DANH LAM VIỆT NAM NỔI BẬT',
-                      style: TextStyle(
-                        color: Color(0xFF17202C),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.2,
+              AppStaggeredReveal(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'DANH LAM VIỆT NAM NỔI BẬT',
+                        style: TextStyle(
+                          color: Color(0xFF17202C),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
                       ),
                     ),
-                  ),
-                  Text(
-                    '${articles.length} bài viết',
-                    style: const TextStyle(
-                      color: _blue,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                    Text(
+                      '${articles.length} bài viết',
+                      style: const TextStyle(
+                        color: _blue,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               if (_selectedRegion != 'Tất cả') ...[
                 const SizedBox(height: 10),
@@ -250,31 +248,29 @@ class _ExplorePageState extends State<ExplorePage> {
               if (articles.isEmpty)
                 const _EmptySearchResult()
               else
-                ...articles.map(
-                  (article) => Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: _TravelArticleCard(
-                      article: article,
-                      isSaved:
-                          widget.savedArticleTitles.contains(article.title),
-                      onSave: () => widget.onToggleSaved(article),
-                      onShare: () => _shareArticle(article),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => TravelArticleDetailPage(
-                            article: article,
-                            onExploreDestination: widget.onExploreDestination,
+                ...articles.asMap().entries.map(
+                  (entry) => AppStaggeredReveal(
+                    order: entry.key + 1,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: _TravelArticleCard(
+                        article: entry.value,
+                        isSaved: widget.savedArticleTitles
+                            .contains(entry.value.title),
+                        onSave: () => widget.onToggleSaved(entry.value),
+                        onShare: () => _shareArticle(entry.value),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => TravelArticleDetailPage(
+                              article: entry.value,
+                              onExploreDestination:
+                                  widget.onExploreDestination,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  )
-                      .animate()
-                      .fadeIn(duration: AppMotion.entranceDuration)
-                      .slideY(
-                        begin: 0.04,
-                        duration: AppMotion.entranceDuration,
-                      ),
+                  ),
                 ),
             ],
           ),
@@ -549,28 +545,35 @@ class TravelArticleDetailPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
             sliver: SliverList.list(
               children: [
-                Text(
-                  article.region.toUpperCase(),
-                  style: const TextStyle(
-                    color: _blue,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1,
+                AppStaggeredReveal(
+                  child: Text(
+                    article.region.toUpperCase(),
+                    style: const TextStyle(
+                      color: _blue,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  article.title,
-                  style: const TextStyle(
-                    color: _navy,
-                    fontSize: 26,
-                    height: 1.2,
-                    fontWeight: FontWeight.w800,
+                AppStaggeredReveal(
+                  order: 1,
+                  child: Text(
+                    article.title,
+                    style: const TextStyle(
+                      color: _navy,
+                      fontSize: 26,
+                      height: 1.2,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
+                AppStaggeredReveal(
+                  order: 2,
+                  child: Row(
+                    children: [
                     const Icon(
                       Icons.location_on_outlined,
                       color: _blue,
@@ -595,7 +598,8 @@ class TravelArticleDetailPage extends StatelessWidget {
                       article.readTime,
                       style: const TextStyle(color: Color(0xFF66707D)),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 20),
                 Text(

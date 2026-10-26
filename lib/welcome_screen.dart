@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-
 import 'notification_screen.dart';
 import 'onboarding_widgets.dart';
 import 'user_service.dart';
-import 'ui_motion.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key, required this.homeBuilder});
@@ -25,7 +22,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     if (!mounted) return;
 
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      onboardingPageRoute<void>(
         builder: (_) => NotificationScreen(homeBuilder: widget.homeBuilder),
       ),
     );
@@ -33,10 +30,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bannerHeight = MediaQuery.sizeOf(context).height * 0.38;
     return OnboardingPageShell(
       banner: OnboardingBanner(
-        height: bannerHeight.clamp(230, 390),
+        height: onboardingBannerHeight(context),
         child: Align(
           alignment: Alignment.bottomLeft,
           child: Padding(
@@ -81,10 +77,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           onChanged: (value) => setState(() => _language = value),
         ),
       ],
-    ).animate().fadeIn(duration: AppMotion.entranceDuration).slideY(
-          begin: 0.04,
-          duration: AppMotion.entranceDuration,
-        );
+    );
   }
 }
 

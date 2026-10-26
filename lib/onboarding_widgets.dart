@@ -1,9 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'ui_motion.dart';
+
 const onboardingNavy = Color(0xFF0E1F38);
 const onboardingBlue = Color(0xFF2A6EEB);
 const onboardingPaleBlue = Color(0xFFE8F1FF);
+
+double onboardingBannerHeight(BuildContext context) =>
+    (MediaQuery.sizeOf(context).height * 0.33).clamp(220.0, 310.0).toDouble();
+
+PageRoute<T> onboardingPageRoute<T>({required WidgetBuilder builder}) =>
+    PageRouteBuilder<T>(
+      pageBuilder: (context, animation, secondaryAnimation) =>
+          builder(context),
+      transitionDuration: AppMotion.entranceDuration,
+      reverseTransitionDuration: AppMotion.pageDuration,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeInOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.025, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
 
 class OnboardingBanner extends StatelessWidget {
   const OnboardingBanner({

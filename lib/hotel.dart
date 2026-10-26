@@ -1683,7 +1683,7 @@ class _HotelNearbyPlacesMapState extends State<_HotelNearbyPlacesMap> {
             child: _hotelPoint == null
                 ? Center(
                     child: _isLoading
-                        ? const CircularProgressIndicator(
+                        ? const AppLoadingIndicator(
                             color: Color(0xFF1674C5),
                           )
                         : const Padding(

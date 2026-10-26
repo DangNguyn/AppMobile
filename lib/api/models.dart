@@ -6,6 +6,7 @@ class ApiUser {
     required this.phone,
     this.avatar,
     this.createdAt,
+    this.isPrivate = false,
   });
 
   final String id;
@@ -14,6 +15,7 @@ class ApiUser {
   final String phone;
   final String? avatar;
   final DateTime? createdAt;
+  final bool isPrivate;
 
   factory ApiUser.fromJson(Map<String, dynamic> json) => ApiUser(
         id: '${json['id'] ?? ''}',
@@ -22,6 +24,7 @@ class ApiUser {
         phone: '${json['phone'] ?? ''}',
         avatar: json['avatar'] as String?,
         createdAt: _date(json['created_at']),
+        isPrivate: json['is_private'] == true,
       );
 }
 
@@ -31,12 +34,16 @@ class ApiUserSearchResult {
     required this.fullName,
     this.avatar,
     this.username,
+    this.isPrivate,
+    this.bio,
   });
 
   final String id;
   final String fullName;
   final String? avatar;
   final String? username;
+  final bool? isPrivate;
+  final String? bio;
 
   factory ApiUserSearchResult.fromJson(Map<String, dynamic> json) =>
       ApiUserSearchResult(
@@ -44,6 +51,10 @@ class ApiUserSearchResult {
         fullName: '${json['full_name'] ?? ''}',
         avatar: json['avatar'] as String?,
         username: json['username'] as String?,
+        isPrivate: json['is_private'] is bool
+            ? json['is_private'] as bool
+            : null,
+        bio: json['bio'] as String?,
       );
 }
 

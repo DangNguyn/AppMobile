@@ -253,7 +253,7 @@ class _PaymentLoadingDialog extends StatelessWidget {
               SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(),
+                child: AppLoadingIndicator(),
               ),
               SizedBox(width: 16),
               Expanded(child: Text('Đang xác nhận thanh toán...')),
@@ -554,7 +554,10 @@ class _TravelHomePageState extends State<TravelHomePage> {
           child: Column(
             children: [
               Expanded(
-                child: _selectedNavIndex == 2
+                child: AppEntranceSwitcher(
+                  child: KeyedSubtree(
+                    key: ValueKey<int>(_selectedNavIndex),
+                    child: _selectedNavIndex == 2
                     ? const BookingPage()
                     : _selectedNavIndex == 3
                         ? const SavedPage()
@@ -612,6 +615,8 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                 ),
                             ],
                           ),
+                  ),
+                ),
               ),
               Container(
                 decoration: const BoxDecoration(
@@ -635,9 +640,6 @@ class _TravelHomePageState extends State<TravelHomePage> {
                             _selectedNavIndex = index;
                             _showScrollTopButton = false;
                           });
-                          if (_scrollController.hasClients) {
-                            _scrollController.jumpTo(0);
-                          }
                         },
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
