@@ -10,6 +10,7 @@ import 'api/api_client.dart';
 import 'api/models.dart';
 import 'user_service.dart';
 import 'privacy_settings_page.dart';
+import 'ui_motion.dart';
 
 const _profileBlue = Color(0xFF1B6EEB);
 const _profileNavy = Color(0xFF0E1F38);
@@ -19,6 +20,7 @@ class PersonalProfilePage extends StatefulWidget {
     super.key,
     required this.fullName,
     required this.username,
+    this.bio = '',
     this.isOwner = false,
     this.profileIsPrivate,
     this.userId,
@@ -27,6 +29,7 @@ class PersonalProfilePage extends StatefulWidget {
 
   final String fullName;
   final String username;
+  final String bio;
 
   /// Set to false when this page is opened by another account's profile search.
   final bool isOwner;
@@ -67,14 +70,21 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
   }
 
   Future<void> _loadPrivacy() async {
-    final isPrivate = widget.isOwner
-        ? await userService.getPrivateProfilePref()
-        : (widget.profileIsPrivate ?? true);
+    var isPrivate = widget.profileIsPrivate ?? false;
+    if (widget.isOwner) {
+      try {
+        isPrivate = (await apiRepository.currentUserProfile()).isPrivate;
+        await userService.savePrivateProfilePref(isPrivate);
+      } catch (_) {
+        isPrivate = await userService.getPrivateProfilePref();
+      }
+    }
     if (mounted) {
       setState(() {
         _privateProfile = isPrivate;
         _privacyLoaded = true;
       });
+      if (!widget.isOwner) await _loadPosts();
     }
   }
 
@@ -117,7 +127,7 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
       await apiRepository.createPost(
         title: draft.title,
         location: draft.location,
-        rating: 5,
+        rating: draft.rating,
         content: draft.content,
       );
       await _loadPosts();
@@ -129,6 +139,15 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
 
   Future<void> _loadPosts() async {
     if (!mounted) return;
+    if (!widget.isOwner && !_privacyLoaded) return;
+    if (!widget.isOwner && _privateProfile) {
+      setState(() {
+        _posts = const [];
+        _postsLoading = false;
+        _postsError = null;
+      });
+      return;
+    }
     setState(() {
       _postsLoading = true;
       _postsError = null;
@@ -194,7 +213,7 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
   Widget build(BuildContext context) {
     if (!widget.isOwner && !_privacyLoaded) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(child: AppLoadingIndicator()),
       );
     }
     if (!widget.isOwner && _privateProfile) {
@@ -274,7 +293,7 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
                           child: SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: AppLoadingIndicator(size: 24),
                           ),
                         )
                       else
@@ -360,7 +379,7 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
           if (_postsLoading)
             const SliverFillRemaining(
               hasScrollBody: false,
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: AppLoadingIndicator()),
             )
           else if (_postsError != null)
             SliverFillRemaining(
@@ -392,13 +411,20 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.travel_explore_rounded,
-                        size: 78, color: Color(0xFFBDE8FC)),
+                    Icon(
+                      !widget.isOwner && widget.profileIsPrivate == null
+                          ? Icons.lock_outline_rounded
+                          : Icons.travel_explore_rounded,
+                      size: 78,
+                      color: const Color(0xFFBDE8FC),
+                    ),
                     const SizedBox(height: 18),
                     Text(
                       widget.isOwner
                           ? 'Chia sẻ bài viết đầu tiên của bạn'
-                          : 'Người dùng này chưa có bài viết công khai',
+                          : widget.profileIsPrivate == null
+                              ? 'Hồ sơ này đang ở chế độ riêng tư hoặc chưa có bài viết công khai'
+                              : 'Người dùng này chưa có bài viết công khai',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Color(0xFF65717D),
@@ -410,7 +436,9 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
                     Text(
                       widget.isOwner
                           ? 'Kể về chuyến đi hoặc khoảnh khắc đáng nhớ của bạn.'
-                          : 'Các bài viết công khai của tài khoản sẽ hiển thị tại đây.',
+                          : widget.profileIsPrivate == null
+                              ? 'Bài viết riêng tư chỉ chủ tài khoản xem được. Nếu tài khoản chưa bật riêng tư, bài viết công khai sẽ hiển thị tại đây.'
+                              : 'Các bài viết công khai của tài khoản sẽ hiển thị tại đây.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           color: Color(0xFF7C8793), height: 1.4),
@@ -519,6 +547,16 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
                           'Username chưa được API cung cấp',
                           style: TextStyle(color: Color(0xFF75818E)),
                         ),
+                      if (widget.bio.trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.bio,
+                          style: const TextStyle(
+                            color: Color(0xFF4B5563),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
                       if (widget.isOwner)
                         TextButton.icon(
                           onPressed: _chooseAvatar,
@@ -583,11 +621,17 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
                         : null,
                   ),
                   title: Text(user.fullName),
-                  subtitle: user.username == null ||
-                          user.username!.trim().isEmpty
-                      ? null
-                      : Text(
-                          '@${user.username!.replaceFirst(RegExp(r'^@'), '')}'),
+                  subtitle: user.isPrivate == true
+                      ? Text(
+                          user.username == null || user.username!.trim().isEmpty
+                              ? 'Hồ sơ riêng tư'
+                              : '@${user.username!.replaceFirst(RegExp(r'^@'), '')} · Hồ sơ riêng tư',
+                        )
+                      : user.username == null ||
+                              user.username!.trim().isEmpty
+                          ? null
+                          : Text(
+                              '@${user.username!.replaceFirst(RegExp(r'^@'), '')}'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.pop(context, user),
                 ),
@@ -600,12 +644,11 @@ class _PersonalProfilePageState extends State<PersonalProfilePage> {
           builder: (_) => PersonalProfilePage(
             fullName: selected.fullName,
             username: selected.username ?? '',
+            bio: selected.bio ?? '',
             userId: selected.id,
             avatarUrl: selected.avatar,
             isOwner: false,
-            // The search response has no privacy flag. Don't infer local prefs
-            // from this device as the privacy state of a remote account.
-            profileIsPrivate: false,
+            profileIsPrivate: selected.isPrivate,
           ),
         ));
       }
@@ -638,10 +681,15 @@ class _ProfileStat extends StatelessWidget {
 }
 
 class _PostDraft {
-  const _PostDraft(
-      {required this.title, required this.location, required this.content});
+  const _PostDraft({
+    required this.title,
+    required this.location,
+    required this.rating,
+    required this.content,
+  });
   final String title;
   final String location;
+  final int rating;
   final String content;
 }
 
@@ -653,35 +701,42 @@ class _CreatePostPage extends StatefulWidget {
 }
 
 class _CreatePostPageState extends State<_CreatePostPage> {
+  final _titleController = TextEditingController();
   final _captionController = TextEditingController();
   final _locationController = TextEditingController();
+  int _rating = 0;
 
   @override
   void dispose() {
+    _titleController.dispose();
     _captionController.dispose();
     _locationController.dispose();
     super.dispose();
   }
 
   void _publish() {
+    final title = _titleController.text.trim();
     final caption = _captionController.text.trim();
     final location = _locationController.text.trim();
-    if (caption.isEmpty || location.isEmpty) return;
-    final firstLine = caption.split(RegExp(r'[\n.!?]')).first.trim();
-    final title = (firstLine.isEmpty ? caption : firstLine);
+    if (title.isEmpty || caption.isEmpty || location.isEmpty || _rating == 0) {
+      return;
+    }
     Navigator.of(context).pop(
       _PostDraft(
-        title: title.length > 200 ? title.substring(0, 200) : title,
+        title: title,
         content: caption,
         location: location,
+        rating: _rating,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final canPublish = _captionController.text.trim().isNotEmpty &&
-        _locationController.text.trim().isNotEmpty;
+    final canPublish = _titleController.text.trim().isNotEmpty &&
+        _captionController.text.trim().isNotEmpty &&
+        _locationController.text.trim().isNotEmpty &&
+        _rating > 0;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -702,6 +757,25 @@ class _CreatePostPageState extends State<_CreatePostPage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
                 children: [
+                  const Text(
+                    'Tiêu đề *',
+                    style: TextStyle(
+                      color: Color(0xFF20252B),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _titleController,
+                    maxLength: 200,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Đặt tiêu đề cho bài viết',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   RichText(
                     text: const TextSpan(
                       style: TextStyle(
@@ -710,7 +784,7 @@ class _CreatePostPageState extends State<_CreatePostPage> {
                         fontWeight: FontWeight.w700,
                       ),
                       children: [
-                        TextSpan(text: 'Chú thích'),
+                        TextSpan(text: 'Có gì trong bài viết này?'),
                         TextSpan(
                             text: ' *', style: TextStyle(color: Colors.red)),
                       ],
@@ -719,10 +793,9 @@ class _CreatePostPageState extends State<_CreatePostPage> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _captionController,
-                    autofocus: true,
+                    maxLength: 10000,
                     minLines: 6,
-                    maxLines: 10,
-                    maxLength: 2000,
+                    maxLines: 12,
                     textAlignVertical: TextAlignVertical.top,
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
@@ -736,36 +809,66 @@ class _CreatePostPageState extends State<_CreatePostPage> {
                       ),
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      '${_captionController.text.length}/2000',
-                      style: const TextStyle(color: Color(0xFF9AA2AA)),
-                    ),
-                  ),
                   const SizedBox(height: 8),
                   const Text(
-                    'API hiện tại chưa hỗ trợ tải ảnh bài viết; bài đăng sẽ gồm nội dung và địa điểm.',
+                      'Hiện API chưa hỗ trợ tải ảnh bài viết.',
                     style: TextStyle(color: Color(0xFF7C8793), fontSize: 13),
                   ),
                   const SizedBox(height: 28),
                   const Text(
-                    'Có gì trong bài viết này?',
+                    'Điểm du lịch bạn tham quan',
                     style: TextStyle(
                       color: Color(0xFF20252B),
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  const SizedBox(height: 8),
                   TextField(
                     controller: _locationController,
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
-                      labelText: 'Địa điểm *',
+                    labelText: 'Tên địa điểm *',
                       hintText: 'Gắn thẻ địa danh, mục hoặc điểm đến',
                       hintStyle: TextStyle(color: Color(0xFFADB4BC)),
                       prefixIcon: Icon(Icons.place_outlined),
                     ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Đánh giá *',
+                    style: TextStyle(
+                      color: Color(0xFF20252B),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      for (var star = 1; star <= 5; star++)
+                        IconButton(
+                          tooltip: '$star sao',
+                          onPressed: () => setState(() => _rating = star),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 44,
+                            minHeight: 44,
+                          ),
+                          icon: Icon(
+                            star <= _rating ? Icons.star : Icons.star_border,
+                            color: const Color(0xFFFFB300),
+                            size: 30,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _rating == 0 ? 'Chọn từ 1 đến 5 sao' : '$_rating/5 sao',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Color(0xFF65717D)),
                   ),
                   const SizedBox(height: 36),
                   Text.rich(

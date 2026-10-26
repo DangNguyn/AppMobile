@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'api/api_repository.dart';
+import 'api/api_client.dart';
+import 'ui_motion.dart';
 import 'user_service.dart';
 
 const _privacyNavy = Color(0xFF0E1F38);
@@ -15,6 +18,8 @@ class PrivacySettingsPage extends StatefulWidget {
 class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
   bool _privateProfile = false;
   bool _isLoaded = false;
+  bool _saving = false;
+  String? _loadError;
 
   @override
   void initState() {
@@ -23,17 +28,49 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
   }
 
   Future<void> _loadPreferences() async {
-    final privateProfile = await userService.getPrivateProfilePref();
-    if (!mounted) return;
-    setState(() {
-      _privateProfile = privateProfile;
-      _isLoaded = true;
-    });
+    try {
+      final profile = await apiRepository.currentUserProfile();
+      if (!mounted) return;
+      setState(() {
+        _privateProfile = profile.isPrivate;
+        _isLoaded = true;
+        _loadError = null;
+      });
+      await userService.savePrivateProfilePref(profile.isPrivate);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoaded = true;
+        _loadError = error is ApiException
+            ? error.message
+            : 'Không thể tải cài đặt quyền riêng tư.';
+      });
+    }
   }
 
   Future<void> _setPrivateProfile(bool value) async {
-    setState(() => _privateProfile = value);
-    await userService.savePrivateProfilePref(value);
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final profile = await apiRepository.updatePrivateProfile(value);
+      if (!mounted) return;
+      setState(() {
+        _privateProfile = profile.isPrivate;
+        _loadError = null;
+      });
+      await userService.savePrivateProfilePref(profile.isPrivate);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error is ApiException
+              ? error.message
+              : 'Không thể cập nhật quyền riêng tư.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -48,7 +85,7 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
         ),
-        body: _isLoaded
+        body: _isLoaded && _loadError == null
             ? ListView(
                 children: [
                   _PrivacySettingTile(
@@ -58,11 +95,32 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
                     description:
                         'Khi bật chế độ này, người khác sẽ không thể xem hồ sơ và bài viết của bạn.',
                     value: _privateProfile,
-                    onChanged: _setPrivateProfile,
+                    onChanged: _saving ? null : _setPrivateProfile,
                   ),
                 ],
               )
-            : const Center(child: CircularProgressIndicator()),
+            : _isLoaded
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _loadError ?? 'Không thể tải cài đặt quyền riêng tư.',
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: _loadPreferences,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Thử lại'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : const Center(child: AppLoadingIndicator()),
       );
 }
 
@@ -80,7 +138,7 @@ class _PrivacySettingTile extends StatelessWidget {
   final String title;
   final String description;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) => Material(

@@ -258,7 +258,9 @@ class _BookingCard extends StatelessWidget {
               const SizedBox(height: 10),
               Text(_roomSummary(booking)),
               const SizedBox(height: 6),
-              Text('${booking.checkIn} - ${booking.checkOut}'),
+              Text(
+                '${formatBookingDate(booking.checkIn)} - ${formatBookingDate(booking.checkOut)}',
+              ),
               const SizedBox(height: 6),
               Text(
                 'Tổng thanh toán: ${_formatBookingMoney(booking.totalAmount)}',
@@ -298,7 +300,10 @@ class BookingDetailPage extends StatelessWidget {
           Text(_roomSummary(booking)),
           const Divider(height: 28),
           _detailLine('Mã đặt phòng', booking.bookingCode ?? booking.id),
-          _detailLine('Lịch trình', '${booking.checkIn} - ${booking.checkOut}'),
+          _detailLine(
+            'Lịch trình',
+            '${formatBookingDate(booking.checkIn)} - ${formatBookingDate(booking.checkOut)}',
+          ),
           _detailLine(
               'Tổng thanh toán', _formatBookingMoney(booking.totalAmount)),
           _detailLine('Trạng thái', '${status.icon} ${status.label}'),

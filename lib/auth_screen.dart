@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-
 import 'api/api_client.dart';
 import 'api/api_repository.dart';
 import 'onboarding_widgets.dart';
 import 'splash_screen.dart';
 import 'user_service.dart';
 import 'ui_motion.dart';
+import 'local_app_storage.dart';
 
 /// Resolves the secure JWT session before exposing features that require auth.
 class AuthGate extends StatefulWidget {
@@ -45,7 +44,7 @@ class _AuthGateState extends State<AuthGate> {
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
+              body: Center(child: AppLoadingIndicator()),
             );
           }
           if (snapshot.data == true) return widget.homeBuilder(context);
@@ -125,6 +124,7 @@ class _AuthScreenState extends State<AuthScreen> {
     final email = _loginEmailController.text.trim();
     final user =
         await apiRepository.login(email, _loginPasswordController.text);
+    await _recordLoginEvent();
     await userService.saveContactInfo(
       email: email,
       mobile: user.phone,
@@ -165,6 +165,7 @@ class _AuthScreenState extends State<AuthScreen> {
     // the newly-created credentials so registration results in an active
     // session instead of leaving the user on the auth screen.
     final user = await apiRepository.login(email, password);
+    await _recordLoginEvent();
     await userService.saveContactInfo(
       email: user.email.isNotEmpty ? user.email : email,
       mobile: user.phone.isNotEmpty ? user.phone : phone,
@@ -184,6 +185,11 @@ class _AuthScreenState extends State<AuthScreen> {
       (route) => false,
     );
   }
+
+  Future<void> _recordLoginEvent() => LocalAppStorage.setString(
+        'fomogo_active_login_event',
+        DateTime.now().microsecondsSinceEpoch.toString(),
+      );
 
   String _messageForApiError(ApiException error) {
     if (!_isLoginMode && error.statusCode == 409) {
@@ -236,7 +242,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     return OnboardingPageShell(
       banner: OnboardingBanner(
-        height: MediaQuery.sizeOf(context).height * 0.3,
+        height: onboardingBannerHeight(context),
         child: Align(
           alignment: Alignment.topLeft,
           child: Padding(
@@ -271,10 +277,7 @@ class _AuthScreenState extends State<AuthScreen> {
           child: _isLoginMode ? _buildLoginForm() : _buildRegisterForm(),
         ),
       ],
-    ).animate().fadeIn(duration: AppMotion.entranceDuration).slideY(
-          begin: 0.04,
-          duration: AppMotion.entranceDuration,
-        );
+    );
   }
 
   Widget _buildModeToggle() {

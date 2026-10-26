@@ -106,7 +106,7 @@ class _AccountScreenState extends State<AccountScreen> {
       if (onboardingCompleted) {
         _profile = _profile.copyWith(
           fullName: info.name,
-          bio: '',
+          bio: info.bio,
           dateOfBirth: info.birthDate,
           gender: info.gender,
           city: info.city,
@@ -116,6 +116,7 @@ class _AccountScreenState extends State<AccountScreen> {
       } else if (info.name.isNotEmpty) {
         _profile = _profile.copyWith(
           fullName: info.name,
+          bio: info.bio,
           dateOfBirth: info.birthDate,
           gender: info.gender,
           city: info.city,
@@ -136,6 +137,15 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
     );
     if (updatedProfile != null && mounted) {
+      await userService.saveUserInfo(
+        name: updatedProfile.fullName,
+        bio: updatedProfile.bio,
+        birthDate: updatedProfile.dateOfBirth,
+        gender: updatedProfile.gender,
+        city: updatedProfile.city,
+      );
+      if (!mounted) return;
+      setState(() => _profile = _profile.copyWith(bio: updatedProfile.bio));
       final oldEmail = _profile.email.trim().toLowerCase();
       final newEmail = updatedProfile.email.trim().toLowerCase();
       try {
@@ -155,6 +165,7 @@ class _AccountScreenState extends State<AccountScreen> {
         );
         await userService.saveUserInfo(
           name: confirmedProfile.fullName,
+          bio: confirmedProfile.bio,
           birthDate: confirmedProfile.dateOfBirth,
           gender: confirmedProfile.gender,
           city: confirmedProfile.city,
@@ -311,6 +322,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       builder: (_) => PersonalProfilePage(
                         fullName: _profile.fullName,
                         username: _profile.username,
+                        bio: _profile.bio,
                         isOwner: true,
                       ),
                     ),
@@ -1238,7 +1250,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 ),
               ],
             )
-          : const Center(child: CircularProgressIndicator()),
+          : const Center(child: AppLoadingIndicator()),
     );
   }
 }

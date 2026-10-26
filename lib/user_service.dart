@@ -5,12 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 class UserInfo {
   const UserInfo({
     this.name = '',
+    this.bio = '',
     this.birthDate = '',
     this.gender = '',
     this.city = '',
   });
 
   final String name;
+  final String bio;
   final String birthDate;
   final String gender;
   final String city;
@@ -51,6 +53,7 @@ class UserService {
   static const _mobileKey = 'user_mobile';
   static const _emailPhoneKey = 'user_email_phone';
   static const _nameKey = 'user_name';
+  static const _bioKey = 'user_bio';
   static const _birthDateKey = 'user_birth_date';
   static const _genderKey = 'user_gender';
   static const _cityKey = 'user_city';
@@ -187,12 +190,14 @@ class UserService {
 
   Future<void> saveUserInfo({
     required String name,
+    String bio = '',
     required String birthDate,
     required String gender,
     String city = '',
   }) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_nameKey, name.trim());
+    await preferences.setString(_bioKey, bio.trim());
     await preferences.setString(_birthDateKey, birthDate);
     await preferences.setString(_genderKey, gender);
     await preferences.setString(_cityKey, city);
@@ -202,6 +207,7 @@ class UserService {
     final preferences = await SharedPreferences.getInstance();
     return UserInfo(
       name: preferences.getString(_nameKey) ?? '',
+      bio: preferences.getString(_bioKey) ?? '',
       birthDate: preferences.getString(_birthDateKey) ?? '',
       gender: preferences.getString(_genderKey) ?? '',
       city: preferences.getString(_cityKey) ?? '',
@@ -250,6 +256,7 @@ class UserService {
       _mobileKey,
       _emailPhoneKey,
       _nameKey,
+      _bioKey,
       _birthDateKey,
       _genderKey,
       _cityKey,

@@ -75,9 +75,7 @@ class _AdditionalInfoScreenState extends State<AdditionalInfoScreen> {
   Widget build(BuildContext context) {
     return OnboardingPageShell(
       banner: OnboardingBanner(
-        height: MediaQuery.sizeOf(context).height * 0.27,
-        imageUrl:
-            'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=85',
+        height: onboardingBannerHeight(context),
         child: Align(
           alignment: Alignment.topLeft,
           child: IconButton(

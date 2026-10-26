@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'dart:convert';
 
+import 'splash_screen.dart';
 import 'account_page.dart';
 import 'auth_screen.dart';
 import 'chat_query_parser.dart';
@@ -21,6 +23,7 @@ import 'voucher_storage_service.dart';
 import 'app_formatters.dart';
 import 'local_app_storage.dart';
 import 'notification_service.dart';
+import 'ui_motion.dart';
 
 enum VietnameseInputMode { telex, vni }
 
@@ -236,8 +239,8 @@ class _NotificationStore {
     unreadCount.value = notifications.where((item) => !item.isRead).length;
   }
 
-  /// Simulate one welcome push when the home page is reached after login.
-  /// The date guard keeps app rebuilds and inbox visits from creating duplicates.
+  /// Simulate one welcome push per successful login, without duplicating it
+  /// when the home page rebuilds or the inbox is opened.
   static Future<void> createLoginNotificationIfNeeded() {
     final pending = _loginNotificationFuture;
     if (pending != null) return pending;
@@ -259,8 +262,12 @@ class _NotificationStore {
     final key = await _userKey();
     final today = DateTime.now();
     final dayKey = '${today.year}-${today.month}-${today.day}';
-    final loginKey = '${key}_last_login_notice_day';
-    if (await LocalAppStorage.getString(loginKey) == dayKey) return;
+    final loginEvent = await LocalAppStorage.getString(
+          'fomogo_active_login_event',
+        ) ??
+        'restored-$dayKey';
+    final loginKey = '${key}_last_login_notice_event';
+    if (await LocalAppStorage.getString(loginKey) == loginEvent) return;
 
     final allowPromotions = await userService.getPromotionNotificationsPref();
     final allowTravelInspiration = await userService.getTravelInspirationPref();
@@ -273,16 +280,17 @@ class _NotificationStore {
     final fresh = await _buildLoginNotice(
       allowPromotions: allowPromotions,
       allowTravelInspiration: allowTravelInspiration,
+      userKey: key,
     );
-    if (fresh != null) {
-      await save([fresh, ...existing]);
-      await AppNotificationService.instance.show(
-        id: fresh.id.hashCode,
-        title: fresh.title,
-        body: fresh.message,
-      );
-    }
-    await LocalAppStorage.setString(loginKey, dayKey);
+    if (fresh == null) return;
+
+    await save([fresh, ...existing]);
+    await AppNotificationService.instance.show(
+      id: fresh.id.hashCode,
+      title: fresh.title,
+      body: fresh.message,
+    );
+    await LocalAppStorage.setString(loginKey, loginEvent);
   }
 
   static Future<List<_AppNotification>> _buildInitialHistory() async {
@@ -344,8 +352,30 @@ class _NotificationStore {
   static Future<_AppNotification?> _buildLoginNotice({
     required bool allowPromotions,
     required bool allowTravelInspiration,
+    required String userKey,
   }) async {
     final now = DateTime.now();
+    if (allowTravelInspiration && allTravelArticles.isNotEmpty) {
+      final lastArticleKey = '${userKey}_last_login_notice_article';
+      final lastArticleTitle = await LocalAppStorage.getString(lastArticleKey);
+      final alternatives = allTravelArticles
+          .where((article) => article.title != lastArticleTitle)
+          .toList();
+      final candidates = alternatives.isEmpty ? allTravelArticles : alternatives;
+      final article = candidates[Random().nextInt(candidates.length)];
+      await LocalAppStorage.setString(lastArticleKey, article.title);
+      return _AppNotification(
+        id: 'login-article-${now.microsecondsSinceEpoch}',
+        type: _AppNotificationType.article,
+        title: 'Gợi ý chuyến đi: ${article.title}',
+        message: article.description,
+        targetId: article.title,
+        location: article.location,
+        image: article.imageUrl,
+        createdAt: now,
+        isRead: false,
+      );
+    }
     if (allowPromotions) {
       try {
         final vouchers = await apiRepository.vouchers();
@@ -388,19 +418,7 @@ class _NotificationStore {
         // Use travel inspiration if it is enabled and hotel APIs are offline.
       }
     }
-    if (!allowTravelInspiration) return null;
-    final article = allTravelArticles.last;
-    return _AppNotification(
-      id: 'login-article-${now.microsecondsSinceEpoch}',
-      type: _AppNotificationType.article,
-      title: 'Gợi ý chuyến đi: ${article.title}',
-      message: article.description,
-      targetId: article.title,
-      location: article.location,
-      image: article.imageUrl,
-      createdAt: now,
-      isRead: false,
-    );
+    return null;
   }
 
   static _AppNotification _voucherNotification(
@@ -678,16 +696,13 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2F80ED)),
         fontFamily: 'Roboto',
+        pageTransitionsTheme: appPageTransitionsTheme,
       ),
-<<<<<<< HEAD
-      home: const AppEntry(),
-=======
       home: SplashScreen(
         homeBuilder: (_) => AuthGate(
           homeBuilder: (_) => const TravelHomePage(),
         ),
       ),
->>>>>>> origin/main
     );
   }
 }
@@ -710,7 +725,7 @@ class AppEntry extends StatelessWidget {
         if (!snapshot.hasData) {
           return const Scaffold(
             body: Center(
-              child: CircularProgressIndicator(color: onboardingBlue),
+              child: AppLoadingIndicator(color: onboardingBlue),
             ),
           );
         }
@@ -765,9 +780,11 @@ class _TravelHomePageState extends State<TravelHomePage> {
     if (!mounted) return;
     _savedArticleTitles.clear();
     Navigator.of(context).pushAndRemoveUntil<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => AuthScreen(
-          homeBuilder: (_) => const TravelHomePage(),
+      onboardingPageRoute<void>(
+        builder: (_) => WelcomeScreen(
+          homeBuilder: (_) => AuthGate(
+            homeBuilder: (_) => const TravelHomePage(),
+          ),
         ),
       ),
       (route) => false,
@@ -849,7 +866,10 @@ class _TravelHomePageState extends State<TravelHomePage> {
           child: Column(
             children: [
               Expanded(
-                child: _selectedNavIndex == 1
+                child: AppEntranceSwitcher(
+                  child: KeyedSubtree(
+                    key: ValueKey<int>(_selectedNavIndex),
+                    child: _selectedNavIndex == 1
                     ? ExplorePage(
                         savedArticleTitles: _savedArticleTitles,
                         onToggleSaved: _toggleSavedArticle,
@@ -862,9 +882,6 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                 _selectedNavIndex = 0;
                                 _showScrollTopButton = false;
                               });
-                              if (_scrollController.hasClients) {
-                                _scrollController.jumpTo(0);
-                              }
                             },
                           )
                         : _selectedNavIndex == 3
@@ -947,6 +964,8 @@ class _TravelHomePageState extends State<TravelHomePage> {
                                         ),
                                     ],
                                   ),
+                  ),
+                ),
               ),
               Container(
                 decoration: const BoxDecoration(
@@ -970,9 +989,6 @@ class _TravelHomePageState extends State<TravelHomePage> {
                             _selectedNavIndex = index;
                             _showScrollTopButton = false;
                           });
-                          if (_scrollController.hasClients) {
-                            _scrollController.jumpTo(0);
-                          }
                         },
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -2740,7 +2756,7 @@ class _BookingPageState extends State<BookingPage> {
                             title: 'Lịch sử đặt phòng',
                           ),
                           SizedBox(height: 24),
-                          Center(child: CircularProgressIndicator()),
+                          Center(child: AppLoadingIndicator()),
                         ],
                       );
                     }
@@ -2920,7 +2936,8 @@ class _HistoryBookingCard extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               Text(
-                '${booking.checkIn} - ${booking.checkOut}',
+                '${formatBookingDate(booking.checkIn)} - '
+                '${formatBookingDate(booking.checkOut)}',
                 style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
               ),
               const SizedBox(height: 8),
@@ -3204,7 +3221,7 @@ class _SavedVoucherCarouselState extends State<_SavedVoucherCarousel> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
             height: 140,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: Center(child: AppLoadingIndicator()),
           );
         }
         if (snapshot.hasError) {
@@ -3408,7 +3425,7 @@ class _RecommendationHotelCarouselState
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
             height: 244,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: Center(child: AppLoadingIndicator()),
           );
         }
         if (snapshot.hasError) {
@@ -3505,7 +3522,7 @@ class _RecommendationHotelCard extends StatelessWidget {
                           return const ColoredBox(
                             color: Color(0xFFE7EEF5),
                             child: Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: AppLoadingIndicator(),
                             ),
                           );
                         }
@@ -5276,7 +5293,7 @@ class _HomeVoucherSectionState extends State<_HomeVoucherSection> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
             height: 180,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: Center(child: AppLoadingIndicator()),
           );
         }
         if (snapshot.hasError) {
@@ -5772,7 +5789,7 @@ class _BrandOfferSectionState extends State<BrandOfferSection> {
             future: _offers,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(child: AppLoadingIndicator());
               }
               if (snapshot.hasError) {
                 return const Center(
@@ -6096,7 +6113,7 @@ class _DiscoverBannerState extends State<DiscoverBanner> {
             if (!snapshot.hasData) {
               return const SizedBox(
                   height: 150,
-                  child: Center(child: CircularProgressIndicator()));
+                  child: Center(child: AppLoadingIndicator()));
             }
             final vouchers = snapshot.data!;
             if (vouchers.isEmpty) {
